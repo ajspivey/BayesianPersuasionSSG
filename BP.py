@@ -32,7 +32,7 @@ def assignmentProbability(lam, m, j):
     return probability
 
 def socialUtility():
-    [assignmentProbability(lam,m,j) * dCosts[m][j]]
+    [assignmentProbability(lam,m,j) * dCosts[m][j] for j in range(targets) for m in defenders]
 
 
 targetNum = 3
