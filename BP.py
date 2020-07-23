@@ -3,59 +3,57 @@
 # ==============================================================================
 # External imports
 from docplex.mp.model import Model
-
-#
-# ONLY WORKS FOR 2 -- MAKE MORE ROBUST
-#
-def getOmegaKeys():
-    # Place all defenders into the target slots
-    # just use a list with target indices for each defender
-    omegaKeys = []
-    for placement in range(len(placements)):
-        for aType in aTypes:
-            omegaKeys.append((placement, aType))
-    return tuple(omegaKeys)
+from itertools import permutations
 
 def getPlacements():
-    # Place all defenders into the target slots
-    # just use a list with target indices for each defender
-    placements = []
-    for _ in range(targetNum**len(defenders)):
-        placements.append((_ // targetNum,_ % targetNum))
-    return placements
+    return list(permutations(defenders + ([0] * (targetNum - len(defenders)))))
 
-def assignmentProbability(lam, m, j):
-    probability = 0
-    for placement in placements:
-        if placement[m] == j:
-            probability += omega[lam, placement]
-    return probability
+def getLambdaPlacements():
+    lambdaPlacements = []
+    for aType in aTypes:
+        for s in placements:
+            lambdaPlacements.append((aType, s))
+    return lambdaPlacements
 
-def socialUtility():
-    [assignmentProbability(lam,m,j) * dCosts[m][j] for j in range(targets) for m in defenders]
-
-
+# Game and optimization
 targetNum = 3
-aTypes = list(range(2))
-aRewards = {0:[1,7,3], 1:[2,1,5]}
-aPenalties = {0:[2,2,2], 1:[1,1,2]}
+m = 1000
+# Attackers
+aTypes = [1,2]
+aRewards = {1:[1,7,3], 2:[2,1,5]}
+aPenalties = {1:[2,2,2], 2:[1,1,2]}
 q = [0.7, 0.3]
 # Defenders
-defenders = list(range(2))
-dRewards = {0:[0,0,0],1:[0,0,0]}
-dPenalties = {0:[1,2,3],1:[3,1,1]}
-dCosts = {0:[1,1,2],1:[1,1,1]}
-# Create the list of omega keys -- all possible assignments, with each defender
+defenders = [1,2]
+dRewards = {1:[0,0,0],2:[0,0,0]}
+dPenalties = {1:[1,2,3],2:[3,1,1]}
+dCosts = {1:[1,1,2],2:[1,1,1]}
+# Create the list of lambda placement keys -- all possible assignments, with each defender
 # type attached.
 placements = getPlacements()
-omegaKeys = getOmegaKeys()
+lambdaPlacements = getLambdaPlacements()
 
+# Create the model and objective function
 model = Model('BayesianPersuasionSolver')
-# omega = model.continuous_var_dict(keys=omegaKeys)
-omega = dict.fromkeys(omegaKeys, 0.333)
-objectiveFunction = 0
-print(socialUtility())
+z = model.continuous_var_dict(keys=lambdaPlacements, ub=2)
+objectiveFunction = sum([q[lam - 1] * sum([z[(lam,s)] for s in placements]) for lam in aTypes])
+
+# Add the constraints
+
+# Solve the problem
 model.maximize(objectiveFunction)
+model.solve()
+print(model.get_solve_status())
+print(model.solution.get_objective_value())
+print([float(value) for value in z.values()])
+
+# Decision variables:
+#   omega -- depends on S and lambda
+#   v --
+#   h -- dpends on lambda and k
+#   y -- depends on m and s and lambda and i
+#   z -- depends on S and lambda
+#
 
 
 # # Create a cplex model
