@@ -25,22 +25,28 @@ def utilityK(s,k):
         utility = -1 * sum([penalty[k] for penalty in dPenalties.values()])
     return utility
 
+def utilityM(s,i,k,m):
+    utility = 0 # Defended
+    if s[k] == -1 or (s[k] == m and i != k): # Undefended
+        utility = -1 * dPenalties[m][k]
+    return utility
+
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
 # Game and optimization
 targetNum = 3
-m = 9999
+M = 9999
 # Attackers
 aTypes = [0,1]
-aRewards = {1:[1,7,3], 2:[2,1,5]}
-aPenalties = {1:[2,2,2], 2:[1,1,2]}
+aRewards = {0:[1,7,3], 1:[2,1,5]}
+aPenalties = {0:[2,2,2], 1:[1,1,2]}
 q = [0.7, 0.3]
 # Defenders
 defenders = [0,1]
-dRewards = {1:[0,0,0],2:[0,0,0]}
-dPenalties = {1:[1,2,3],2:[3,1,1]}
-dCosts = {1:[1,1,2],2:[1,1,1]}
+dRewards = {0:[0,0,0],1:[0,0,0]}
+dPenalties = {0:[1,2,3],1:[3,1,1]}
+dCosts = {0:[1,1,2],1:[1,1,1]}
 # Create the list of lambda placement keys -- all possible assignments, with each defender
 # type attached.
 placements = getPlacements()
@@ -60,13 +66,13 @@ objectiveFunction = sum([q[lam] * sum([z[(lam,s)] for s in placements]) for lam 
 
 # Add the constraints
 # Z constraints
-model.add_constraints([z[(lam,s)] <= w[(lam,s)] * utilityK(s,k) + (1 - h[(lam, k)])*m for k in range(targetNum) for s in placements for lam in aTypes])
+model.add_constraints([z[(lam,s)] <= w[(lam,s)] * utilityK(s,k) + (1 - h[(lam, k)])*M for k in range(targetNum) for s in placements for lam in aTypes])
 # W constraints
 model.add_constraints([sum([w[(lam,s)] for s in placements]) == 1 for lam in aTypes])
 # Y constraints
 model.add_constraints([sum(q[lam] * sum([y[(lam,s,m,i)] for s in placements if s[i] == m]) for lam in aTypes) >= sum(q[lam] * sum([y[(lam,s,m,j)] for s in placements if s[i] == m]) for lam in aTypes) for i in range(targetNum) for j in range(targetNum) if j != i for m in defenders])
-
-
+model.add_constraints([y[(lam,s,m,i)] >= w[(lam,s)]  * utilityM(s,i,k,m) - (1-h[(lam,k)]) * M for s in placements for lam in aTypes for i in range(targetNum) for k in range(targetNum) for m in defenders])
+model.add_constraints([y[(lam,s,m,i)] <= w[(lam,s)]  * utilityM(s,i,k,m) + (1-h[(lam,k)]) * M for s in placements for lam in aTypes for i in range(targetNum) for k in range(targetNum) for m in defenders])
 # V constraints
 # H constraints -- already a binary variable
 model.add_constraints([sum([h[(lam,k)] for k in range(targetNum)]) == 1 for lam in aTypes])
@@ -77,8 +83,6 @@ model.solve()
 model.export("model.lp")
 print(model.get_solve_status())
 print(model.solution.get_objective_value())
-print([float(value) for value in z.values()])
-print([float(value) for value in h.values()])
 
 # Decision variables:
 #   omega -- depends on S and lambda
