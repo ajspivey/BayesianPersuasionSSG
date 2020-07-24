@@ -53,7 +53,7 @@ lambdaPlacements = getLambdaPlacements()
 model = Model('BayesianPersuasionSolver')
 z = model.continuous_var_dict(keys=lambdaPlacements, name="z")
 w = model.continuous_var_dict(keys=lambdaPlacements, lb=0, ub=1, name="w")
-y = model.continuous_var_dict(keys=[(lam,s,m,i) for lam in aTypes for s in placements for m in defenders for i in range(targetNum)])
+y = model.continuous_var_dict(keys=[(lam,s,m,i) for lam in aTypes for s in placements for m in defenders for i in range(targetNum)], name="y")
 h = model.binary_var_dict(keys=[(lam, k) for lam in aTypes for k in range(targetNum)], name="h")
 
 objectiveFunction = sum([q[lam] * sum([z[(lam,s)] for s in placements]) for lam in aTypes])
@@ -64,6 +64,9 @@ model.add_constraints([z[(lam,s)] <= w[(lam,s)] * utilityK(s,k) + (1 - h[(lam, k
 # W constraints
 model.add_constraints([sum([w[(lam,s)] for s in placements]) == 1 for lam in aTypes])
 # Y constraints
+model.add_constraints([sum(q[lam] * sum([y[(lam,s,m,i)] for s in placements if s[i] == m]) for lam in aTypes) >= sum(q[lam] * sum([y[(lam,s,m,j)] for s in placements if s[i] == m]) for lam in aTypes) for i in range(targetNum) for j in range(targetNum) if j != i for m in defenders])
+
+
 # V constraints
 # H constraints -- already a binary variable
 model.add_constraints([sum([h[(lam,k)] for k in range(targetNum)]) == 1 for lam in aTypes])
