@@ -4,13 +4,13 @@
 # External imports
 from docplex.mp.model import Model
 from itertools import permutations
-
+import time
 
 # ==============================================================================
 # FUNCTIONS
 # ==============================================================================
 def getPlacements():
-    return list(permutations(defenders + ([-1] * (targetNum - len(defenders)))))
+    return list(permutations(defenders + ([-1 * x for x in range(targetNum - len(defenders))])))
 
 def getLambdaPlacements():
     lambdaPlacements = []
@@ -21,32 +21,33 @@ def getLambdaPlacements():
 
 def utilityK(s,k):
     utility = 0 # Defended
-    if s[k] == -1: # Undefended
+    if s[k] < 0: # Undefended
         utility = sum([penalty[k] for penalty in dPenalties.values()])
     return utility
 
 def utilityM(s,i,k,m):
     utility = 0 # Defended
-    if s[k] == -1 or (s[k] == m and i != k): # Undefended
-        utility = sum([penalty[k] for penalty in dPenalties.values()])
+    if s[k] < 0 or (s[k] == m and i != k): # Undefended
+        utility = dPenalties[m][k]
     return utility
 
+start_time = time.time()
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
 # Game and optimization
-targetNum = 3
+targetNum = 10
 M = 9999
 # Attackers
 aTypes = [1,2]
-aRewards = {1:[1,7,3], 2:[2,1,5]}
-aPenalties = {1:[-2,-2,-2], 2:[-1,-1,-2]}
+aRewards = {1:[1,7,3,4,2,1,2,3,4,5], 2:[2,1,5,9,1,5,4,3,2,1]}
+aPenalties = {1:[-2,-2,-2,-3,-2,-2,-2,-2,-3,-2], 2:[-1,-1,-2,-4,-1,-1,-2,-3,-4,-5]}
 q = [0.7, 0.3]
 # Defenders
 defenders = [1,2]
-dRewards = {1:[0,0,0],2:[0,0,0]}
-dPenalties = {1:[-1,-2,-3],2:[-3,-1,-1]}
-dCosts = {1:[1,1,2],2:[1,1,1]}
+dRewards = {1:[0,0,0,0,0,0,0,0,0,0],2:[0,0,0,0,0,0,0,0,0,0]}
+dPenalties = {1:[-1,-2,-3,-1,-2,-1,-2,-3,-4,-5],2:[-3,-1,-1,-5,-4,-5,-4,-3,-2,-1]}
+dCosts = {1:[1,1,2,1,1,1,2,1,2,1],2:[1,1,1,2,2,1,1,1,2,2]}
 # Create the list of lambda placement keys -- all possible assignments, with each defender
 # type attached.
 placements = getPlacements()
@@ -84,6 +85,7 @@ model.add_constraints([sum([h[(lam,k)] for k in range(targetNum)]) == 1 for lam 
 model.maximize(objectiveFunction)
 model.solve()
 model.export("model.lp")
+print("--- %s seconds ---" % (time.time() - start_time))
 print(model.get_solve_status())
 print(model.solution.get_objective_value())
 print(list([float(wVal) for wVal in w.values()]))
