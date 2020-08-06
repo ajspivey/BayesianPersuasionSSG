@@ -6,8 +6,9 @@ from docplex.mp.model import Model
 from itertools import permutations
 from functools import reduce
 from operator import mul
+from numpy import argmax
+from time import time as getTime
 import random
-import time
 
 randThing = random.Random()
 # randThing.seed(0)
@@ -46,7 +47,7 @@ def generateRandomAttackers(attackerNum, targetNum):
         aRewards[a] = {}
         aPenalties[a] = {}
         for i in range(targetNum):
-            aRewards[a][i] = 0
+            aRewards[a][i] = randThing.randint(1,50)
             aPenalties[a][i] = -1 * randThing.randint(1,50)
     return attackers, aRewards, aPenalties, q
 
@@ -61,12 +62,10 @@ def getLambdaPlacements():
     return lambdaPlacements
 
 def utilityDI(m,x,lam,i):
-    u = x[i] * dRewards[m][i] + (1-x[i]) * dPenalties[m][i]
-    return u
+    return x[i] * dRewards[m][i] + (1-x[i]) * dPenalties[m][i]
 
 def utilityLamI(x,lam,i):
-    u = x[i] * aPenalties[lam][i] + (1-x[i]) * aRewards[lam][i]
-    return u
+    return x[i] * aPenalties[lam][i] + (1-x[i]) * aRewards[lam][i]
 
 def probabilityProtected(dStrats, targetNum):
     protectionOdds = []
@@ -75,7 +74,7 @@ def probabilityProtected(dStrats, targetNum):
         protectionOdds.append(1-reduce(mul, [1-odd for odd in probabilities]))
     return protectionOdds
 
-start_time = time.time()
+start_time = getTime()
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
@@ -115,5 +114,10 @@ for m in defenders:
 aStrat = {}
 protectionOdds = probabilityProtected(dStrat, targetNum)
 for lam in aTypes:
+    expectedUtilities = []
+    for i in range(targetNum):
+        expectedUtilities.append((1-protectionOdds[i])*aRewards[lam][i] + protectionOdds[i]*aPenalties[lam][i])
+    aStrat[lam] = [0] * targetNum
+    aStrat[lam][argmax(expectedUtilities)] = 1.0
 
-print("--- %s seconds ---" % (time.time() - start_time))
+print("--- %s seconds ---" % (getTime() - start_time))
