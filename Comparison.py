@@ -17,22 +17,22 @@ randThing = random.Random()
 # ==============================================================================
 # FUNCTIONS
 # ==============================================================================
-def generateRandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCeiling=20, costCeiling=10):
+def generateRandomDefenders(defenderNum, targetNum):
     defenders = list(range(1, defenderNum + 1))
     dRewards = {}
     dPenalties = {}
     dCosts = {}
     for m in defenders:
-        dRewards[m] = {}
-        dPenalties[m] = {}
-        dCosts[m] = {}
+        dRewards[m] = []
+        dPenalties[m] = []
+        dCosts[m] = []
         for i in range(targetNum):
-            dRewards[m][i] = 0
-            dPenalties[m][i] = -1 * randThing.randint(1,penaltyCeiling)
-            dCosts[m][i] = -1 * randThing.randint(0,costCeiling)
+            dRewards[m].append(0)
+            dPenalties[m].append(-1 * randThing.randint(1,3))
+            dCosts[m].append(-1 * randThing.randint(1,10))
     return defenders, dRewards, dPenalties, dCosts
 
-def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCeiling=20):
+def generateRandomAttackers(attackerNum, targetNum):
     probability = 1.0
     attackers = list(range(1, attackerNum + 1))
     aRewards = {}
@@ -45,11 +45,11 @@ def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCei
             qVal = randThing.uniform(0,probability)
             probability -= qVal
             q.append(qVal)
-        aRewards[a] = {}
-        aPenalties[a] = {}
+        aRewards[a] = []
+        aPenalties[a] = []
         for i in range(targetNum):
-            aRewards[a][i] = randThing.randint(1,rewardCeiling)
-            aPenalties[a][i] = -1 * randThing.randint(1,penaltyCeiling)
+            aRewards[a].append(randThing.randint(1,50))
+            aPenalties[a].append(-1 * randThing.randint(1,50))
     return attackers, aRewards, aPenalties, q
 
 def getPlacements(defenders):
