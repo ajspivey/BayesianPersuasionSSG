@@ -62,15 +62,23 @@ def getLambdaPlacements():
     return lambdaPlacements
 
 def utilityK(s,k):
-    utility = 0 # Defended
+    costSum = 0
+    for i in range(len(s)):
+        defender = s[i]
+        if defender != -1:
+            costSum += dCosts[defender][i]
+    utility = costSum # Defended
     if s[k] == -1: # Undefended
-        utility = sum([penalty[k] for penalty in dPenalties.values()])
+        utility = sum([penalty[k] for penalty in dPenalties.values()]) + costSum
     return utility
 
 def utilityM(s,i,k,m):
-    utility = 0 # Defended
-    if s[k] == -1 or (s[k] == m and i != k): # Undefended
-        utility = sum([penalty[k] for penalty in dPenalties.values()])
+    if s[k] == -1 and i != k: # Undefended
+        utility = dPenalties[m][k] + dCosts[m][i]
+    elif s[k] == m and i != k: # Left my post
+        utility = dPenalties[m][k] + dCosts[m][i]
+    else:
+        utility = dCosts[m][i]
     return utility
 
 start_time = getTime()

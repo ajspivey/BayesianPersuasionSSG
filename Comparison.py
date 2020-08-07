@@ -8,6 +8,7 @@ from functools import reduce
 from operator import mul
 from numpy import argmax
 from time import time as getTime
+import matplotlib.pyplot as plt
 import random
 
 randThing = random.Random()
@@ -81,10 +82,24 @@ def utilityK(s,k,dPenalties):
     return utility
 
 def utilityM(s,i,k,m,dPenalties):
-    utility = 0 # Defended
-    if s[k] == -1 or (s[k] == m and i != k): # Undefended
-        utility = sum([penalty[k] for penalty in dPenalties.values()])
+    if s[k] == -1 and i != k: # Undefended
+        utility = dPenalties[m][k]
+    elif s[k] == m and i != k: # Left my post
+        utility = dPenalties[m][k]
+    else:
+        utility = 0
     return utility
+
+def createGraph(title, xLabel, yLabel, v1, v1Label, v2, v2Label):
+    g = plt.figure()
+    plt.plot(range(3, len(v1) + 3), v2, 'r', label=f'{v2Label}')
+    plt.plot(range(3, len(v1) + 3), v1, 'g', label=f'{v1Label}')
+    plt.title(f"{title}")
+    plt.xlabel(f"{xLabel}")
+    plt.ylabel(f"{yLabel}")
+    plt.legend()
+    plt.savefig(f"./{title}.png")
+    return g
 
 def getAvgUtilitiesAndTimes(targetNum, avgCount=10):
     bpUtility = 0
@@ -153,6 +168,7 @@ def getAvgUtilitiesAndTimes(targetNum, avgCount=10):
 # GAME SETTINGS
 # ==============================================================================
 targetNums = 10
+avgCount = 1
 DEFENDERNUM = 2
 ATTACKERNUM = 2
 M = 9999999
@@ -163,13 +179,18 @@ models = []
 # ==============================================================================
 # LP Definition & Constraints
 # ==============================================================================
-avgUtils = []
-avgTimes = []
+avgBPUtils = []
+avgBPTimes = []
+avgBaselineUtils = []
+avgBaselineTimes = []
 for targetNum in range(3, targetNums + 1):
     print(f"targetSize {targetNum} of {targetNums}")
-    bpUtility, bpTime, baselineUtility, baselineTime = getAvgUtilitiesAndTimes(targetNum)
-    avgUtils.append((bpUtility, baselineUtility))
-    avgTimes.append((bpTime, baselineTime))
+    bpUtility, bpTime, baselineUtility, baselineTime = getAvgUtilitiesAndTimes(targetNum, avgCount)
+    avgBPUtils.append(bpUtility)
+    avgBPTimes.append(bpTime)
+    avgBaselineUtils.append(baselineUtility)
+    avgBaselineTimes.append(baselineTime)
 
-print(avgUtils)
-print(avgTimes)
+uGraph = createGraph("Average Utilities", "Number of Targets", "Utility", avgBPUtils, "Persuasion Scheme Utility", avgBaselineUtils, "Baseline Utility")
+tGraph = createGraph("Average Runtimes", "Number of Targets", "Runtime", avgBPTimes, "Persuasion Scheme Time", avgBaselineTimes, "Baseline Time")
+plt.show()
