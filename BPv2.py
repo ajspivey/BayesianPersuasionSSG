@@ -82,6 +82,12 @@ def utilityM(s,i,k,m):
         utility = dCosts[m][i]
     return utility
 
+def aUtility(s,a,lam):
+    if s[a] != -1:
+        return aPenalties[lam][a]
+    else:
+        return aRewards[lam][a]
+
 start_time = getTime()
 # ==============================================================================
 # GAME SETTINGS
@@ -117,6 +123,7 @@ w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
 objectiveFunction = sum([q[lam - 1] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a) for s in placements for a in attackerActions]) for lam in aTypes])
 # Add the constraints
 # W constraints
+model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam) for s in placements]) for a in attackerActions for b in attackerActions for lam in aTypes])
 model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
 
 # Solve the problem
