@@ -110,17 +110,6 @@ attackerNum = 2
 M = 1000
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(defenderNum, targetNum)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(attackerNum, targetNum)
-
-aTypes = [0,1]
-aRewards = {0:[1,1,1], 1:[2,2,2]}
-aPenalties = {0:[-1,-1,-1], 1:[-2,-2,-2]}
-q = [0.7, 0.3]
-# Defenders
-defenders = [0,1]
-dRewards = {0:[0,0,0],1:[0,0,0]}
-dPenalties = {0:[-1,-1,-1],1:[-2,-2,-2]}
-dCosts = {0:[-1,-1,-1],1:[-2,-2,-2]}
-
 placements = getPlacements()
 attackerActions = list(range(targetNum))
 defenderActions = {}
@@ -150,5 +139,5 @@ model.solve()
 model.export("exampleModel.lp")
 print("--- %s seconds ---" % (getTime() - start_time))
 print(model.get_solve_status())
-# for k, v in w.items():
-#     print(k, float(v))
+for k, v in w.items():
+    print(k, float(v))
