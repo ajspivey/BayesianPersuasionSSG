@@ -71,7 +71,6 @@ def defenderSocialUtility(s,k):
     utility = costSum # Defended
     if s[k] == -1: # Undefended
         utility = sum([penalty[k] for penalty in dPenalties.values()]) + costSum
-    print(f"Social utility for {s}, {k} == {utility}")
     return utility
 
 def utilityM(s,i,k,m):
@@ -116,10 +115,9 @@ model = Model('BayesianPersuasionSolver')
 w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
 
 objectiveFunction = sum([q[lam - 1] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a) for s in placements for a in attackerActions]) for lam in aTypes])
-print(objectiveFunction)
-
 # Add the constraints
 # W constraints
+model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
 
 # Solve the problem
 model.maximize(objectiveFunction)
