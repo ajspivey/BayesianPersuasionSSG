@@ -54,6 +54,18 @@ def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCei
 def getPlacements():
     return list(permutations(defenders + ([-1] * (targetNum - len(defenders)))))
 
+def getOtherPlacements(placements,defenders, defenderActions):
+    otherPlacements = {}
+    for m in defenders:
+        otherPlacements[m] = {}
+        for d in defenderActions[m]:
+            mDefenders = defenders.copy()
+            mDefenders.remove(m)
+            index = d.index(m)
+            oPlacements = list(set(permutations(mDefenders + ([-1] * (targetNum - len(mDefenders))))))
+            otherPlacements[m][d] = [x for x in oPlacements if x[index] == -1]
+    return otherPlacements
+
 def getOmegaKeys():
     omegaKeys = []
     for aType in aTypes:
@@ -73,13 +85,13 @@ def defenderSocialUtility(s,k):
         utility = sum([penalty[k] for penalty in dPenalties.values()]) + costSum
     return utility
 
-def utilityM(s,i,k,m):
-    if s[k] == -1 and i != k: # Undefended
-        utility = dPenalties[m][k] + dCosts[m][i]
-    elif s[k] == m and i != k: # Left my post
-        utility = dPenalties[m][k] + dCosts[m][i]
+def utilityM(d,dm,a,m):
+    s = tuple([v1 if v1 != -1 else v2 for v1, v2 in zip(d, dm)])
+    defenderIndex = d.index(m)
+    if s[a] == -1: # Undefended
+        utility = dPenalties[m][a] + dCosts[m][defenderIndex]
     else:
-        utility = dCosts[m][i]
+        utility = dRewards[m][a] + dCosts[m][defenderIndex]
     return utility
 
 def aUtility(s,a,lam):
@@ -111,6 +123,10 @@ dCosts = {0:[-1,-1,-1],1:[-2,-2,-2]}
 
 placements = getPlacements()
 attackerActions = list(range(targetNum))
+defenderActions = {}
+for m in defenders:
+    defenderActions[m] = list(set(permutations([m] + ([-1] * (targetNum - 1)))))
+otherPlacements = getOtherPlacements(placements, defenders, defenderActions)
 omegaKeys = getOmegaKeys()
 
 # ==============================================================================
@@ -124,8 +140,10 @@ objectiveFunction = sum([q[lam - 1] * sum([w[(s,a,lam)] * defenderSocialUtility(
 # Add the constraints
 # W constraints
 model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam) for s in placements]) for a in attackerActions for b in attackerActions for lam in aTypes])
+model.add_constraints([sum([q[lam-1] * sum([w[tuple([v1 if v1 != -1 else v2 for v1, v2 in zip(d, dm)]),a,lam] * utilityM(d,dm,a,m) for a in attackerActions for dm in otherPlacements[m][d]])]) >= \
+                       sum([q[lam-1] * sum([w[tuple([v1 if v1 != -1 else v2 for v1, v2 in zip(d, dm)]),a,lam] * utilityM(e,dm,a,m) for a in attackerActions for dm in otherPlacements[m][d]])]) \
+                       for m in defenders for d in defenderActions[m] for e in defenderActions[m] if d != e for lam in aTypes])
 model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
-
 # Solve the problem
 model.maximize(objectiveFunction)
 model.solve()
