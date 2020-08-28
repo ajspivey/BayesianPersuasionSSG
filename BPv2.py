@@ -83,8 +83,6 @@ def defenderSocialUtility(s,k):
         if targetIndex == k:
             defended = True
     for defender in defenders:
-        print(s)
-        print(defender)
         targetIndex = s[defender]
         utility += dCosts[defender][targetIndex]
         if defended == False:
@@ -117,9 +115,9 @@ start_time = getTime()
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-targetNum = 3
-defenderNum = 2
-attackerNum = 2
+targetNum = 6
+defenderNum = 4
+attackerNum = 3
 M = 1000
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(defenderNum, targetNum)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(attackerNum, targetNum)
