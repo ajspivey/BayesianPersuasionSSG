@@ -1,1 +1,4 @@
-*.lp
+model.lp
+modelBaseline.lp
+*.png
+sandbox.py
