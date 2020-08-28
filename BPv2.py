@@ -17,7 +17,7 @@ randThing = random.Random()
 # FUNCTIONS
 # ==============================================================================
 def generateRandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCeiling=20, costCeiling=10):
-    defenders = list(range(1, defenderNum + 1))
+    defenders = list(range(defenderNum))
     dRewards = {}
     dPenalties = {}
     dCosts = {}
@@ -33,7 +33,7 @@ def generateRandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCei
 
 def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCeiling=20):
     probability = 1.0
-    attackers = list(range(1, attackerNum + 1))
+    attackers = list(range(attackerNum))
     aRewards = {}
     aPenalties = {}
     q = []
@@ -51,20 +51,22 @@ def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCei
             aPenalties[a].append(-1 * randThing.randint(1,penaltyCeiling))
     return attackers, aRewards, aPenalties, q
 
-def getPlacements():
-    return list(permutations(defenders + ([-1] * (targetNum - len(defenders)))))
+def numberToBase(n, b, length):
+    if n == 0:
+        answer = [0] * length
+        return tuple(answer)
+    digits = []
+    while n:
+        digits.append(int(n % b))
+        n //= b
+    answer = digits[::-1]
+    if len(answer) < length:
+        for i in range(length - len(answer)):
+            answer.append(0)
+    return tuple(answer)
 
-def getOtherPlacements(placements,defenders, defenderActions):
-    otherPlacements = {}
-    for m in defenders:
-        otherPlacements[m] = {}
-        for d in defenderActions[m]:
-            mDefenders = defenders.copy()
-            mDefenders.remove(m)
-            index = d.index(m)
-            oPlacements = list(set(permutations(mDefenders + ([-1] * (targetNum - len(mDefenders))))))
-            otherPlacements[m][d] = [x for x in oPlacements if x[index] == -1]
-    return otherPlacements
+def getPlacements(defenders, targetNum):
+    return list(set([numberToBase(i,targetNum,len(defenders)) for i in range(targetNum ** len(defenders))]))
 
 def getOmegaKeys():
     omegaKeys = []
@@ -72,33 +74,44 @@ def getOmegaKeys():
         for s in placements:
             for a in attackerActions:
                 omegaKeys.append((s, a, aType))
-    return omegaKeys
+    return list(set(omegaKeys))
 
 def defenderSocialUtility(s,k):
-    costSum = 0
-    for i in range(len(s)):
-        defender = s[i]
-        if defender != -1:
-            costSum += dCosts[defender][i]
-    utility = costSum # Defended
-    if s[k] == -1: # Undefended
-        utility = sum([penalty[k] for penalty in dPenalties.values()]) + costSum
+    utility = 0
+    defended = False
+    for targetIndex in s:
+        if targetIndex == k:
+            defended = True
+    for defender in defenders:
+        print(s)
+        print(defender)
+        targetIndex = s[defender]
+        utility += dCosts[defender][targetIndex]
+        if defended == False:
+            utility += dPenalties[defender][targetIndex]
     return utility
 
 def utilityM(d,dm,a,m):
-    s = tuple([v1 if v1 != -1 else v2 for v1, v2 in zip(d, dm)])
-    defenderIndex = d.index(m)
-    if s[a] == -1: # Undefended
-        utility = dPenalties[m][a] + dCosts[m][defenderIndex]
-    else:
-        utility = dRewards[m][a] + dCosts[m][defenderIndex]
+    utility = dCosts[m][d]
+    defended = False
+    for dIndex in range(len(dm)):
+        if dIndex != m and dm[dIndex] == a:
+            defended = True
+    if d == a:
+        defended = True
+    if defended == False:
+        utility += dPenalties[m][d]
     return utility
 
 def aUtility(s,a,lam):
-    if s[a] != -1:
-        return aPenalties[lam][a]
-    else:
-        return aRewards[lam][a]
+    utility = aRewards[lam][a]
+    defended = False
+    for targetIndex in s:
+        if targetIndex == a:
+            defended = True
+    if defended == True:
+        utility = aPenalties[lam][a]
+    return utility
 
 start_time = getTime()
 # ==============================================================================
@@ -110,12 +123,8 @@ attackerNum = 2
 M = 1000
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(defenderNum, targetNum)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(attackerNum, targetNum)
-placements = getPlacements()
+placements = getPlacements(defenders, targetNum)
 attackerActions = list(range(targetNum))
-defenderActions = {}
-for m in defenders:
-    defenderActions[m] = list(set(permutations([m] + ([-1] * (targetNum - 1)))))
-otherPlacements = getOtherPlacements(placements, defenders, defenderActions)
 omegaKeys = getOmegaKeys()
 
 # ==============================================================================
@@ -125,13 +134,13 @@ omegaKeys = getOmegaKeys()
 model = Model('BayesianPersuasionSolver')
 w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
 
-objectiveFunction = sum([q[lam - 1] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a) for s in placements for a in attackerActions]) for lam in aTypes])
+objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a) for s in placements for a in attackerActions]) for lam in aTypes])
 # Add the constraints
 # W constraints
-model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam) for s in placements]) for a in attackerActions for b in attackerActions for lam in aTypes])
-model.add_constraints([sum([q[lam-1] * sum([w[tuple([v1 if v1 != -1 else v2 for v1, v2 in zip(d, dm)]),a,lam] * utilityM(d,dm,a,m) for a in attackerActions for dm in otherPlacements[m][d]])]) >= \
-                       sum([q[lam-1] * sum([w[tuple([v1 if v1 != -1 else v2 for v1, v2 in zip(d, dm)]),a,lam] * utilityM(e,dm,a,m) for a in attackerActions for dm in otherPlacements[m][d]])]) \
-                       for m in defenders for d in defenderActions[m] for e in defenderActions[m] if d != e for lam in aTypes])
+model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
+model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
+                       sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m) for a in attackerActions for dm in placements if dm[m] == d])]) \
+                       for m in defenders for d in range(targetNum) for e in range(targetNum) if d != e for lam in aTypes])
 model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
 # Solve the problem
 model.maximize(objectiveFunction)
@@ -139,5 +148,5 @@ model.solve()
 model.export("exampleModel.lp")
 print("--- %s seconds ---" % (getTime() - start_time))
 print(model.get_solve_status())
-for k, v in w.items():
-    print(k, float(v))
+# for k, v in w.items():
+#     print(k, float(v))
