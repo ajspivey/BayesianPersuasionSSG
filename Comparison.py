@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import random
 
 randThing = random.Random()
-randThing.seed(1)
+# randThing.seed(1)
 
 # ==============================================================================
 # FUNCTIONS
@@ -63,11 +63,11 @@ def numberToBase(n, b, length):
     answer = digits[::-1]
     if len(answer) < length:
         for i in range(length - len(answer)):
-            answer.append(0)
+            answer.insert(0,0)
     return tuple(answer)
 
 def getPlacements(defenders, targetNum):
-    return list(set([numberToBase(i,targetNum,len(defenders)) for i in range(targetNum ** len(defenders))]))
+    return [numberToBase(i,targetNum,len(defenders)) for i in range(targetNum ** len(defenders))]
 
 def getOmegaKeys(aTypes, placements, attackerActions):
     omegaKeys = []
@@ -88,6 +88,7 @@ def defenderSocialUtility(s,k,defenders, dCosts, dPenalties):
         utility += dCosts[defender][targetIndex]
         if defended == False:
             utility += dPenalties[defender][targetIndex]
+    # print(f"D social for s:{s}, a:{k}, = {utility}")
     return utility
 
 def utilityM(d,dm,a,m, dRewards, dPenalties, dCosts):
@@ -100,6 +101,7 @@ def utilityM(d,dm,a,m, dRewards, dPenalties, dCosts):
         defended = True
     if defended == False:
         utility += dPenalties[m][d]
+    # print(f"M utility for d:{d}, dm:{dm}, a:{a}, m:{m} = {utility}")
     return utility
 
 def aUtility(s,a,lam, aPenalties, aRewards):
@@ -110,33 +112,34 @@ def aUtility(s,a,lam, aPenalties, aRewards):
             defended = True
     if defended == True:
         utility = aPenalties[lam][a]
+    # print(f"A utility for s:{s}, a:{a} = {utility}")
     return utility
 
-def getLambdaPlacements(aTypes, placements):
-    lambdaPlacements = []
-    for aType in aTypes:
-        for s in placements:
-            lambdaPlacements.append((aType, s))
-    return lambdaPlacements
-
-def utilityDI(m,x,lam,i,dRewards,dPenalties):
-    return x[i] * dRewards[m][i] + (1-x[i]) * dPenalties[m][i]
-
-def utilityLamI(x,lam,i,aRewards,aPenalties):
-    return x[i] * aPenalties[lam][i] + (1-x[i]) * aRewards[lam][i]
-
-def probabilityProtected(dStrats, targetNum):
-    protectionOdds = []
-    strats = list(zip(*dStrats.values()))
-    for probabilities in strats:
-        protectionOdds.append(1-reduce(mul, [1-odd for odd in probabilities]))
-    return protectionOdds
-
-def utilityK(s,k,dPenalties):
-    utility = 0 # Defended
-    if s[k] == -1: # Undefended
-        utility = sum([penalty[k] for penalty in dPenalties.values()])
-    return utility
+# def getLambdaPlacements(aTypes, placements):
+#     lambdaPlacements = []
+#     for aType in aTypes:
+#         for s in placements:
+#             lambdaPlacements.append((aType, s))
+#     return lambdaPlacements
+#
+# def utilityDI(m,x,lam,i,dRewards,dPenalties):
+#     return x[i] * dRewards[m][i] + (1-x[i]) * dPenalties[m][i]
+#
+# def utilityLamI(x,lam,i,aRewards,aPenalties):
+#     return x[i] * aPenalties[lam][i] + (1-x[i]) * aRewards[lam][i]
+#
+# def probabilityProtected(dStrats, targetNum):
+#     protectionOdds = []
+#     strats = list(zip(*dStrats.values()))
+#     for probabilities in strats:
+#         protectionOdds.append(1-reduce(mul, [1-odd for odd in probabilities]))
+#     return protectionOdds
+#
+# def utilityK(s,k,dPenalties):
+#     utility = 0 # Defended
+#     if s[k] == -1: # Undefended
+#         utility = sum([penalty[k] for penalty in dPenalties.values()])
+#     return utility
 
 def createGraph(title, xLabel, yLabel, v1, v1Label, v2, v2Label):
     g = plt.figure()
@@ -156,9 +159,11 @@ def getAvgUtilitiesAndTimes(targetNum, avgCount=10):
     baselineTime = 0
     for _ in range(avgCount):
         print(f"set {_} of avgCount")
+        # print("\n\n\n\n\n\n\n\n\n")
         # Generate a new game
         defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(DEFENDERNUM, targetNum)
         aTypes, aRewards, aPenalties, q = generateRandomAttackers(ATTACKERNUM, targetNum)
+        # dCosts = {0: [0, 0, 0], 1: [0, 0, 0]}
         placements = getPlacements(defenders, targetNum)
         attackerActions = list(range(targetNum))
         omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
@@ -170,13 +175,13 @@ def getAvgUtilitiesAndTimes(targetNum, avgCount=10):
         model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam,aPenalties,aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam,aPenalties,aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
         model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m,dRewards, dPenalties, dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
                                sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m,dRewards, dPenalties, dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
-                               for m in defenders for d in range(targetNum) for e in range(targetNum) if d != e for lam in aTypes])
-        model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
+                               for m in defenders for d in range(targetNum) for e in range(targetNum) if d != e for lam in aTypes], names=[f"defender {m} suggested {d} but went to {e} vs. attacker {lam}" for m in defenders for d in range(targetNum) for e in range(targetNum) if d != e for lam in aTypes])
+        model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes], names=[f"Probabilities must sum to 1 for attacker type {lam}" for lam in aTypes])
         model.maximize(objectiveFunction)
         model.solve()
         try:
             bpUtility += model.solution.get_objective_value()
-            print(f"BP: {model.solution.get_objective_value()}")
+            # print(f"BP: {model.solution.get_objective_value()}")
         except Exception as err:
             print(f"Defender rewards: {dRewards}")
             print(f"Defender penalties: {dPenalties}")
@@ -184,7 +189,7 @@ def getAvgUtilitiesAndTimes(targetNum, avgCount=10):
             print(f"Attacker rewards: {aRewards}")
             print(f"Attacker Penalties: {aPenalties}")
             print(f"Q: {q}")
-            model.export("badModel2.lp")
+            model.export("badModel.lp")
             print(model.get_solve_status())
             asdf
         bpTime += getTime() - bpStart
@@ -223,7 +228,7 @@ def getAvgUtilitiesAndTimes(targetNum, avgCount=10):
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-targetNums = 3
+targetNums = 5
 avgCount = 1000
 DEFENDERNUM = 2
 ATTACKERNUM = 1
