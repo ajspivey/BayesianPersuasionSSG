@@ -16,24 +16,24 @@ randThing = random.Random()
 # ==============================================================================
 # FUNCTIONS
 # ==============================================================================
-def generateRandomDefenders(defenderNum, targetNum):
-    defenders = list(range(1, defenderNum + 1))
+def generateRandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCeiling=20, costCeiling=10):
+    defenders = list(range(defenderNum))
     dRewards = {}
     dPenalties = {}
     dCosts = {}
     for m in defenders:
-        dRewards[m] = {}
-        dPenalties[m] = {}
-        dCosts[m] = {}
+        dRewards[m] = []
+        dPenalties[m] = []
+        dCosts[m] = []
         for i in range(targetNum):
-            dRewards[m][i] = 0
-            dPenalties[m][i] = -1 * randThing.randint(1,50)
-            dCosts[m][i] = -1 * randThing.randint(1,10)
+            dRewards[m].append(0)
+            dPenalties[m].append(-1 * randThing.randint(1,penaltyCeiling))
+            dCosts[m].append(-1 * randThing.randint(1,costCeiling))
     return defenders, dRewards, dPenalties, dCosts
 
-def generateRandomAttackers(attackerNum, targetNum):
+def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCeiling=20):
     probability = 1.0
-    attackers = list(range(1, attackerNum + 1))
+    attackers = list(range(attackerNum))
     aRewards = {}
     aPenalties = {}
     q = []
@@ -44,11 +44,11 @@ def generateRandomAttackers(attackerNum, targetNum):
             qVal = randThing.uniform(0,probability)
             probability -= qVal
             q.append(qVal)
-        aRewards[a] = {}
-        aPenalties[a] = {}
+        aRewards[a] = []
+        aPenalties[a] = []
         for i in range(targetNum):
-            aRewards[a][i] = randThing.randint(1,50)
-            aPenalties[a][i] = -1 * randThing.randint(1,50)
+            aRewards[a].append(randThing.randint(1,rewardCeiling))
+            aPenalties[a].append(-1 * randThing.randint(1,penaltyCeiling))
     return attackers, aRewards, aPenalties, q
 
 def getPlacements():
@@ -61,11 +61,13 @@ def getLambdaPlacements():
             lambdaPlacements.append((aType, s))
     return lambdaPlacements
 
-def utilityDI(m,x,lam,i):
-    return x[i] * dRewards[m][i] + (1-x[i]) * dPenalties[m][i]
+def utilityDI(m,x,i):
+    utility = x[i] * (dRewards[m][i] + dCosts[m][i]) + (1-x[i]) * (dPenalties[m][i] + dCosts[m][i])
+    return utility
 
 def utilityLamI(x,lam,i):
-    return x[i] * aPenalties[lam][i] + (1-x[i]) * aRewards[lam][i]
+    utility = x[i] * aPenalties[lam][i] + (1-x[i]) * aRewards[lam][i]
+    return utility
 
 def probabilityProtected(dStrats, targetNum):
     protectionOdds = []
@@ -80,7 +82,7 @@ start_time = getTime()
 # ==============================================================================
 targetNum = 3
 defenderNum = 2
-attackerNum = 2
+attackerNum = 1
 M = 9999
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(defenderNum, targetNum)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(attackerNum, targetNum)
@@ -93,31 +95,32 @@ lambdaPlacements = getLambdaPlacements()
 dStrat = {}
 models = {}
 for m in defenders:
-    model = Model('defenderStrategy')
-    x = model.continuous_var_list(keys=targetNum, lb=0, ub=1, name="x")
-    l = model.continuous_var_dict(keys=aTypes, lb=-model.infinity, name="UtilityLam")
-    h = model.binary_var_dict(keys=[(lam, k) for lam in aTypes for k in range(targetNum)], lb=0, ub=1, name="h")
-    ud = model.continuous_var_dict(keys=[lam for lam in aTypes], lb=-model.infinity, name="ud")
-    objectiveFunction = sum([q[lam - 1] * ud[lam] for lam in aTypes])
-    model.add_constraints([ud[lam] <= utilityDI(m,x,lam,k) + (1-h[(lam,k)]) * M for k in range(targetNum) for lam in aTypes])
-    model.add_constraints([l[lam] <= utilityLamI(x,lam,k) + (1-h[(lam,k)]) * M for k in range(targetNum) for lam in aTypes])
-    model.add_constraints([l[lam] >= utilityLamI(x,lam,k) for k in range(targetNum) for lam in aTypes])
+    model = Model(f"defenderStrategy{m}")
+    x = model.continuous_var_list(keys=targetNum, lb=0, ub=1, name=f"x{m}")
+    h = model.binary_var_dict(keys=[(lam, k) for lam in aTypes for k in range(targetNum)], lb=0, ub=1, name=f"h{m}")
+    ul = model.continuous_var_dict(keys=aTypes, lb=-model.infinity, name=f"ua{m}")
+    ud = model.continuous_var_dict(keys=[lam for lam in aTypes], lb=-model.infinity, name=f"ud{m}")
+    objectiveFunction = sum([q[lam] * ud[lam] for lam in aTypes])
+    model.add_constraints([ud[lam] <= utilityDI(m,x,i) + (1-h[(lam,i)]) * M for i in range(targetNum) for lam in aTypes], names=[f"defender utility for lam {lam}, i {i}" for i in range(targetNum) for lam in aTypes])
+    model.add_constraints([ul[lam] <= utilityLamI(x,lam,i) + (1-h[(lam,i)]) * M for i in range(targetNum) for lam in aTypes], names=[f"lam {lam} utility leq for i {i}" for i in range(targetNum) for lam in aTypes])
+    model.add_constraints([ul[lam] >= utilityLamI(x,lam,i) for i in range(targetNum) for lam in aTypes], names=[f"lam {lam} utility geq, for i {i}" for i in range(targetNum) for lam in aTypes])
+    model.add_constraints([sum([h[(lam,i)] for i in range(targetNum)]) == 1 for lam in aTypes], names=[f"h sum is 1 for lam {lam}" for lam in aTypes])
     model.add_constraint(sum([x[i] for i in range(targetNum)]) == 1)
-    model.add_constraints([sum([h[(lam,k)] for k in range(targetNum)]) == 1 for lam in aTypes])
     # Solve the problem
     model.maximize(objectiveFunction)
     model.solve()
-    model.export("modelBaseline.lp")
+    model.export(f"modelBaseline{m}.lp")
     dStrat[m] = list([float(xVal) for xVal in x])
     models[m] = model
 # Attacker response
-aStrat = {}
+aStrat = 0
 protectionOdds = probabilityProtected(dStrat, targetNum)
 for lam in aTypes:
     expectedUtilities = []
     for i in range(targetNum):
-        expectedUtilities.append((1-protectionOdds[i])*aRewards[lam][i] + protectionOdds[i]*aPenalties[lam][i])
-    aStrat[lam] = [0] * targetNum
-    aStrat[lam][argmax(expectedUtilities)] = 1.0
-
+        expectedUtilities.append(((1-protectionOdds[i])*aRewards[lam][i]) + (protectionOdds[i]*aPenalties[lam][i]))
+    aStrat = argmax(expectedUtilities)
+defenderSocialUtility = 0
+for m in defenders:
+    defenderSocialUtility += dStrat[m][aStrat] * (dRewards[m][aStrat] + dCosts[m][aStrat]) + (1-dStrat[m][aStrat]) * (dPenalties[m][aStrat] + dCosts[m][aStrat])
 print("--- %s seconds ---" % (getTime() - start_time))

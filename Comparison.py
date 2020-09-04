@@ -115,31 +115,27 @@ def aUtility(s,a,lam, aPenalties, aRewards):
     # print(f"A utility for s:{s}, a:{a} = {utility}")
     return utility
 
-# def getLambdaPlacements(aTypes, placements):
-#     lambdaPlacements = []
-#     for aType in aTypes:
-#         for s in placements:
-#             lambdaPlacements.append((aType, s))
-#     return lambdaPlacements
-#
-# def utilityDI(m,x,lam,i,dRewards,dPenalties):
-#     return x[i] * dRewards[m][i] + (1-x[i]) * dPenalties[m][i]
-#
-# def utilityLamI(x,lam,i,aRewards,aPenalties):
-#     return x[i] * aPenalties[lam][i] + (1-x[i]) * aRewards[lam][i]
-#
-# def probabilityProtected(dStrats, targetNum):
-#     protectionOdds = []
-#     strats = list(zip(*dStrats.values()))
-#     for probabilities in strats:
-#         protectionOdds.append(1-reduce(mul, [1-odd for odd in probabilities]))
-#     return protectionOdds
-#
-# def utilityK(s,k,dPenalties):
-#     utility = 0 # Defended
-#     if s[k] == -1: # Undefended
-#         utility = sum([penalty[k] for penalty in dPenalties.values()])
-#     return utility
+def getLambdaPlacements():
+    lambdaPlacements = []
+    for aType in aTypes:
+        for s in placements:
+            lambdaPlacements.append((aType, s))
+    return lambdaPlacements
+
+def utilityDI(m,x,i,dRewards,dPenalties,dCosts):
+    utility = x[i] * (dRewards[m][i] + dCosts[m][i]) + (1-x[i]) * (dPenalties[m][i] + dCosts[m][i])
+    return utility
+
+def utilityLamI(x,lam,i,aRewards,aPenalties):
+    utility = x[i] * aPenalties[lam][i] + (1-x[i]) * aRewards[lam][i]
+    return utility
+
+def probabilityProtected(dStrats, targetNum):
+    protectionOdds = []
+    strats = list(zip(*dStrats.values()))
+    for probabilities in strats:
+        protectionOdds.append(1-reduce(mul, [1-odd for odd in probabilities]))
+    return protectionOdds
 
 def createGraph(title, xLabel, yLabel, v1, v1Label, v2, v2Label):
     g = plt.figure()
@@ -159,11 +155,9 @@ def getAvgUtilitiesAndTimes(targetNum, avgCount=10):
     baselineTime = 0
     for _ in range(avgCount):
         print(f"set {_} of avgCount")
-        # print("\n\n\n\n\n\n\n\n\n")
         # Generate a new game
         defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(DEFENDERNUM, targetNum)
         aTypes, aRewards, aPenalties, q = generateRandomAttackers(ATTACKERNUM, targetNum)
-        # dCosts = {0: [0, 0, 0], 1: [0, 0, 0]}
         placements = getPlacements(defenders, targetNum)
         attackerActions = list(range(targetNum))
         omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
@@ -179,63 +173,59 @@ def getAvgUtilitiesAndTimes(targetNum, avgCount=10):
         model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes], names=[f"Probabilities must sum to 1 for attacker type {lam}" for lam in aTypes])
         model.maximize(objectiveFunction)
         model.solve()
-        try:
-            bpUtility += model.solution.get_objective_value()
-            # print(f"BP: {model.solution.get_objective_value()}")
-        except Exception as err:
-            print(f"Defender rewards: {dRewards}")
-            print(f"Defender penalties: {dPenalties}")
-            print(f"Defender costs: {dCosts}")
-            print(f"Attacker rewards: {aRewards}")
-            print(f"Attacker Penalties: {aPenalties}")
-            print(f"Q: {q}")
-            model.export("badModel.lp")
-            print(model.get_solve_status())
-            asdf
+        bpUtility += model.solution.get_objective_value()
         bpTime += getTime() - bpStart
         # Build the Baseline Model
-        # baselineStart = getTime()
-        # dStrat = {}
-        # models2 = {}
-        # for m in defenders:
-        #     model2 = Model('defenderStrategy')
-        #     x = model2.continuous_var_list(keys=targetNum, lb=0, ub=1, name="x")
-        #     l = model2.continuous_var_dict(keys=aTypes, lb=-model2.infinity, name="UtilityLam")
-        #     h = model2.binary_var_dict(keys=[(lam, k) for lam in aTypes for k in range(targetNum)], lb=0, ub=1, name="h")
-        #     ud = model2.continuous_var_dict(keys=[lam for lam in aTypes], lb=-model2.infinity, name="ud")
-        #     objectiveFunction2 = sum([q[lam - 1] * ud[lam] for lam in aTypes])
-        #     model2.add_constraints([ud[lam] <= utilityDI(m,x,lam,k,dRewards,dPenalties) + (1-h[(lam,k)]) * M for k in range(targetNum) for lam in aTypes])
-        #     model2.add_constraints([l[lam] <= utilityLamI(x,lam,k,aRewards,aPenalties) + (1-h[(lam,k)]) * M for k in range(targetNum) for lam in aTypes])
-        #     model2.add_constraints([l[lam] >= utilityLamI(x,lam,k,aRewards,aPenalties) for k in range(targetNum) for lam in aTypes])
-        #     model2.add_constraint(sum([x[i] for i in range(targetNum)]) == 1)
-        #     model2.add_constraints([sum([h[(lam,k)] for k in range(targetNum)]) == 1 for lam in aTypes])
-        #     # Solve the problem
-        #     model2.maximize(objectiveFunction2)
-        #     model2.solve()
-        #     model2.export("modelBaseline.lp")
-        #     dStrat[m] = list([float(xVal) for xVal in x])
-        #     models2[m] = model2
-        # baselineUtility += sum([model2.solution.get_objective_value() for model2 in models2.values()])
-        # print(f"Baseline: {sum([model2.solution.get_objective_value() for model2 in models2.values()])}")
-        # print(f"Model values: {[model2.solution.get_objective_value() for model2 in models2.values()]}")
-        # baselineTime += getTime() - baselineStart
+        baselineStart = getTime()
+        dStrat = {}
+        models2 = {}
+        for m in defenders:
+            model2 = Model(f"defenderStrategy{m}")
+            x = model2.continuous_var_list(keys=targetNum, lb=0, ub=1, name=f"x{m}")
+            h = model2.binary_var_dict(keys=[(lam, k) for lam in aTypes for k in range(targetNum)], lb=0, ub=1, name=f"h{m}")
+            ul = model2.continuous_var_dict(keys=aTypes, lb=-model2.infinity, name=f"ua{m}")
+            ud = model2.continuous_var_dict(keys=[lam for lam in aTypes], lb=-model2.infinity, name=f"ud{m}")
+            objectiveFunction = sum([q[lam] * ud[lam] for lam in aTypes])
+            model2.add_constraints([ud[lam] <= utilityDI(m,x,i,dRewards,dPenalties,dCosts) + (1-h[(lam,i)]) * M for i in range(targetNum) for lam in aTypes], names=[f"defender utility for lam {lam}, i {i}" for i in range(targetNum) for lam in aTypes])
+            model2.add_constraints([ul[lam] <= utilityLamI(x,lam,i,aRewards,aPenalties) + (1-h[(lam,i)]) * M for i in range(targetNum) for lam in aTypes], names=[f"lam {lam} utility leq for i {i}" for i in range(targetNum) for lam in aTypes])
+            model2.add_constraints([ul[lam] >= utilityLamI(x,lam,i,aRewards,aPenalties) for i in range(targetNum) for lam in aTypes], names=[f"lam {lam} utility geq, for i {i}" for i in range(targetNum) for lam in aTypes])
+            model2.add_constraints([sum([h[(lam,i)] for i in range(targetNum)]) == 1 for lam in aTypes], names=[f"h sum is 1 for lam {lam}" for lam in aTypes])
+            model2.add_constraint(sum([x[i] for i in range(targetNum)]) == 1)
+            # Solve the problem
+            model2.maximize(objectiveFunction)
+            model2.solve()
+            model2.export(f"modelBaseline{m}.lp")
+            dStrat[m] = list([float(xVal) for xVal in x])
+            models[m] = model2
+        # Attacker response
+        aStrat = 0
+        protectionOdds = probabilityProtected(dStrat, targetNum)
+        for lam in aTypes:
+            expectedUtilities = []
+            for i in range(targetNum):
+                expectedUtilities.append(((1-protectionOdds[i])*aRewards[lam][i]) + (protectionOdds[i]*aPenalties[lam][i]))
+            aStrat = argmax(expectedUtilities)
+        for m in defenders:
+            baselineUtility += dStrat[m][aStrat] * (dRewards[m][aStrat] + dCosts[m][aStrat]) + (1-dStrat[m][aStrat]) * (dPenalties[m][aStrat] + dCosts[m][aStrat])
+        baselineTime += getTime() - baselineStart
     bpUtility /= avgCount
     bpTime /= avgCount
-    # baselineUtility /= avgCount
-    # baselineTime /= avgCount
+    baselineUtility /= avgCount
+    baselineTime /= avgCount
     return bpUtility, bpTime, baselineUtility, baselineTime
 
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-targetNums = 5
-avgCount = 1000
+targetFloor = 3
+targetCeiling = 7
+avgCount = 100
 DEFENDERNUM = 2
 ATTACKERNUM = 1
 M = 10000
 defenderUtilities = []
 solutionTimes = []
-models = []
+models = {}
 
 # ==============================================================================
 # LP Definition & Constraints
@@ -244,8 +234,8 @@ avgBPUtils = []
 avgBPTimes = []
 avgBaselineUtils = []
 avgBaselineTimes = []
-for targetNum in range(3, targetNums + 1):
-    print(f"targetSize {targetNum} of {targetNums}")
+for targetNum in range(targetFloor, targetCeiling + 1):
+    print(f"targetSize {targetNum} of {targetCeiling}")
     bpUtility, bpTime, baselineUtility, baselineTime = getAvgUtilitiesAndTimes(targetNum, avgCount)
     avgBPUtils.append(bpUtility)
     avgBPTimes.append(bpTime)
