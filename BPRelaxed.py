@@ -115,9 +115,9 @@ start_time = getTime()
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-targetNum = 6
-defenderNum = 4
-attackerNum = 3
+targetNum = 3
+defenderNum = 2
+attackerNum = 1
 M = 1000
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(defenderNum, targetNum)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(attackerNum, targetNum)
@@ -133,12 +133,11 @@ model = Model('BayesianPersuasionSolver')
 w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
 
 objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a) for s in placements for a in attackerActions]) for lam in aTypes])
-# Add the constraints
-# W constraints
-model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
-model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
-                       sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m) for a in attackerActions for dm in placements if dm[m] == d])]) \
-                       for m in defenders for d in range(targetNum) for e in range(targetNum) if d != e for lam in aTypes])
+# Constraints
+model.add_constraints([sum([sum([w[(s,a,lam)] * aUtility(s,a,lam) for s in placements]) for a in attackerActions]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam) for s in placements for a in attackerActions]) for b in attackerActions for lam in aTypes], names=[f"c att {lam} ignores all suggestions and always goes to {b}" for b in attackerActions for lam in aTypes])
+model.add_constraints([sum([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m) for a in attackerActions for dm in placements if dm[m] == d])]) for d in range(targetNum)]) >= \
+                       sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m) for a in attackerActions for d in range(targetNum) for dm in placements if dm[m] == d])]) \
+                       for m in defenders for e in range(targetNum) for lam in aTypes], names=[f"defender {m} ignores all suggestions and goes to {e} every time" for m in defenders for e in range(targetNum) for lam in aTypes])
 model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
 # Solve the problem
 model.maximize(objectiveFunction)
@@ -146,5 +145,5 @@ model.solve()
 model.export("exampleModel.lp")
 print("--- %s seconds ---" % (getTime() - start_time))
 print(model.get_solve_status())
-# for k, v in w.items():
-#     print(k, float(v))
+for k, v in w.items():
+    print(k, float(v))
