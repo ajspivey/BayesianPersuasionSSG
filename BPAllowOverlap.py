@@ -59,7 +59,7 @@ def numberToBase(n, b, length):
     while n:
         digits.append(int(n % b))
         n //= b
-    answer = digits[::-1]
+    answer = digits
     if len(answer) < length:
         for i in range(length - len(answer)):
             answer.append(0)
@@ -79,14 +79,14 @@ def getOmegaKeys():
 def defenderSocialUtility(s,k):
     utility = 0
     defended = False
-    for targetIndex in s:
-        if targetIndex == k:
+    for defenderAssignment in s:
+        if defenderAssignment == k:
             defended = True
     for defender in defenders:
         targetIndex = s[defender]
         utility += dCosts[defender][targetIndex]
         if defended == False:
-            utility += dPenalties[defender][targetIndex]
+            utility += dPenalties[defender][k]
     return utility
 
 def utilityM(d,dm,a,m):
@@ -98,7 +98,7 @@ def utilityM(d,dm,a,m):
     if d == a:
         defended = True
     if defended == False:
-        utility += dPenalties[m][d]
+        utility += dPenalties[m][a]
     return utility
 
 def aUtility(s,a,lam):
@@ -115,13 +115,14 @@ start_time = getTime()
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-targetNum = 6
-defenderNum = 4
-attackerNum = 3
+targetNum = 3
+defenderNum = 2
+attackerNum = 2
 M = 1000
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(defenderNum, targetNum)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(attackerNum, targetNum)
 placements = getPlacements(defenders, targetNum)
+print(placements)
 attackerActions = list(range(targetNum))
 omegaKeys = getOmegaKeys()
 

@@ -62,14 +62,14 @@ def numberToBase(n, b, length):
     while n:
         digits.append(int(n % b))
         n //= b
-    answer = digits[::-1]
+    answer = digits
     if len(answer) < length:
         for i in range(length - len(answer)):
             answer.append(0)
     return tuple(answer)
 
 def getPlacements(defenders, targetNum):
-    return list(set([numberToBase(i,targetNum,len(defenders)) for i in range(targetNum ** len(defenders))]))
+    return [numberToBase(i,targetNum,len(defenders)) for i in range(targetNum ** len(defenders))]
 
 def getOmegaKeys():
     omegaKeys = []
@@ -82,14 +82,14 @@ def getOmegaKeys():
 def defenderSocialUtility(s,k):
     utility = 0
     defended = False
-    for targetIndex in s:
-        if targetIndex == k:
+    for defenderAssignment in s:
+        if defenderAssignment == k:
             defended = True
     for defender in defenders:
         targetIndex = s[defender]
         utility += dCosts[defender][targetIndex]
         if defended == False:
-            utility += dPenalties[defender][targetIndex]
+            utility += dPenalties[defender][k]
     return utility
 
 def utilityM(d,dm,a,m):
@@ -101,7 +101,7 @@ def utilityM(d,dm,a,m):
     if d == a:
         defended = True
     if defended == False:
-        utility += dPenalties[m][d]
+        utility += dPenalties[m][a]
     return utility
 
 def aUtility(s,a,lam):
@@ -120,7 +120,7 @@ start_time = getTime()
 # ==============================================================================
 targetNum = 3
 defenderNum = 2
-attackerNum = 1
+attackerNum = 2
 M = 1000
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(defenderNum, targetNum)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(attackerNum, targetNum)
@@ -141,13 +141,14 @@ objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a)
 model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
 model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
                        sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m) for a in attackerActions for dm in placements if dm[m] == d])]) \
-                       for m in defenders for d in range(targetNum) for e in range(targetNum) if d != e for lam in aTypes])
+                       for m in defenders for d in range(targetNum + 1) for e in range(targetNum + 1) if d != e for lam in aTypes])
 model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
 # Solve the problem
 model.maximize(objectiveFunction)
 model.solve()
 model.export("exampleModel.lp")
 print("--- %s seconds ---" % (getTime() - start_time))
+print(model.solution.get_objective_value())
 print(model.get_solve_status())
-# for k, v in w.items():
-#     print(k, float(v))
+for k, v in w.items():
+    print(k, float(v))

@@ -59,10 +59,10 @@ def numberToBase(n, b, length):
     while n:
         digits.append(int(n % b))
         n //= b
-    answer = digits[::-1]
+    answer = digits
     if len(answer) < length:
         for i in range(length - len(answer)):
-            answer.insert(0,0)
+            answer.append(0)
     return tuple(answer)
 
 def getPlacements(defenders, targetNum):
@@ -79,14 +79,14 @@ def getOmegaKeys():
 def defenderSocialUtility(s,k):
     utility = 0
     defended = False
-    for targetIndex in s:
-        if targetIndex == k:
+    for defenderAssignment in s:
+        if defenderAssignment == k:
             defended = True
     for defender in defenders:
         targetIndex = s[defender]
         utility += dCosts[defender][targetIndex]
         if defended == False:
-            utility += dPenalties[defender][targetIndex]
+            utility += dPenalties[defender][k]
     return utility
 
 def utilityM(d,dm,a,m):
@@ -98,7 +98,7 @@ def utilityM(d,dm,a,m):
     if d == a:
         defended = True
     if defended == False:
-        utility += dPenalties[m][d]
+        utility += dPenalties[m][a]
     return utility
 
 def aUtility(s,a,lam):
