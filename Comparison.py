@@ -195,10 +195,7 @@ def getAvgUtilitiesAndTimes(targetNum, avgCount=10):
         model2.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
         model2.maximize(objectiveFunction)
         model2.solve()
-        print(model2.solution.get_objective_value())
-        for k, v in w.items():
-            print(k, float(v))
-        bpUtility += model2.solution.get_objective_value()
+        baselineUtility += model2.solution.get_objective_value()
         baselineTime += getTime() - baselineStart
 
         # # Build the Baseline Model
@@ -243,6 +240,7 @@ def getAvgUtilitiesAndTimes(targetNum, avgCount=10):
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
+timeBudget = 30 * 60 # 30 minutes
 targetFloor = 3
 targetCeiling = 7
 defenderFloor = 1
@@ -252,7 +250,7 @@ attackerCeiling = 10
 DEFENDERNUM = 2
 ATTACKERNUM = 2
 TARGETNUM = 7
-avgCount = 100
+avgCount = 40
 M = 10000
 defenderUtilities = []
 solutionTimes = []
@@ -273,6 +271,6 @@ for targetNum in range(targetFloor, targetCeiling + 1):
     avgBaselineUtils.append(baselineUtility)
     avgBaselineTimes.append(baselineTime)
 
-uGraph = createGraph("Average Utilities", "Number of Defenders", "Utility", avgBPUtils, "Persuasion Scheme Utility", avgBaselineUtils, "Baseline Utility")
-tGraph = createGraph("Average Runtimes", "Number of Defenders", "Runtime", avgBPTimes, "Persuasion Scheme Time", avgBaselineTimes, "Baseline Time")
+uGraph = createGraph("Average Utilities", "Number of Targets", "Utility", avgBPUtils, "Persuasion Scheme Utility", avgBaselineUtils, "Baseline Utility")
+tGraph = createGraph("Average Runtimes", "Number of Targets", "Runtime", avgBPTimes, "Persuasion Scheme Time", avgBaselineTimes, "Baseline Time")
 plt.show()
