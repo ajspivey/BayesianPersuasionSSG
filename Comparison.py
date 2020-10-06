@@ -260,7 +260,7 @@ def iterateTargets(targetNum, avgCount, bpOverbudget, bpNRDAOverbudget, baseline
         # # Build the Baseline Model
         if not baselineOverbudget:
             baselineStart = getTime()
-            baselineUtility += solveBPNoRequiredDefenderAssignment(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+            baselineUtility += solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
             baselineTime += getTime() - baselineStart
         else:
             baselineUtility = None
@@ -309,7 +309,7 @@ for _ in range(3, 51):
         bpOver = True
     if bpNRDATime is not None and bpNRDATime > timeBudget:
         bpNRDAOver = True
-    if baselineTime is not None and baselineTime > timeBudget:
+    if bpOver and bpNRDAOver:
         baselineOver = True
     avgBPUtils.append(bpUtility)
     avgBPTimes.append(bpTime)
