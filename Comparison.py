@@ -110,7 +110,6 @@ def aUtility(s,a,lam, aPenalties, aRewards):
             defended = True
     if defended == True:
         utility = aPenalties[lam][a]
-    # print(f"A utility for s:{s}, a:{a} = {utility}")
     return utility
 
 def getLambdaPlacements():
@@ -208,7 +207,6 @@ def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aR
         # Solve the problem
         model2.maximize(objectiveFunction)
         model2.solve()
-        model2.export(f"modelBaseline{m}.lp")
         dStrat[m] = list([float(xVal) for xVal in x])
         models[m] = model2
     # Attacker response
@@ -234,7 +232,7 @@ def iterateTargets(targetNum, avgCount, bpOverbudget, bpNRDAOverbudget, baseline
     baselineUtility = 0
     baselineTime = 0
     for _ in range(avgCount):
-        print(f"set {_} of avgCount")
+        # print(f"set {_} of avgCount")
         # Generate a new game
         defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(DEFENDERNUM, targetNum)
         aTypes, aRewards, aPenalties, q = generateRandomAttackers(ATTACKERNUM, targetNum)
@@ -303,7 +301,7 @@ bpOver = False
 bpNRDAOver = False
 baselineOver = False
 for _ in range(3, 51):
-    print(f"Iteration {_} of {50} for targetCount")
+    # print(f"Iteration {_} of {50} for targetCount")
     bpUtility, bpTime, bpNRDAUtility, bpNRDATime, baselineUtility, baselineTime = iterateTargets(targetNum=_, avgCount=avgCount, bpOverbudget=bpOver, bpNRDAOverbudget=bpNRDAOver, baselineOverbudget=baselineOver)
     if bpTime is not None and bpTime > timeBudget:
         bpOver = True
