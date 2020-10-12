@@ -10,6 +10,7 @@ from numpy import argmax
 from time import time as getTime
 import matplotlib.pyplot as plt
 import random
+import copy
 
 randThing = random.Random()
 # randThing.seed(1)
@@ -77,17 +78,17 @@ def getOmegaKeys(aTypes, placements, attackerActions):
                 omegaKeys.append((s, a, aType))
     return list(set(omegaKeys))
 
-def defenderSocialUtility(s,k,defenders, dCosts, dPenalties):
+def defenderSocialUtility(s,a,defenders, dCosts, dPenalties):
     utility = 0
     defended = False
     for defenderAssignment in s:
-        if defenderAssignment == k:
+        if defenderAssignment == a:
             defended = True
     for defender in defenders:
         targetIndex = s[defender]
         utility += dCosts[defender][targetIndex]
         if defended == False:
-            utility += dPenalties[defender][k]
+            utility += dPenalties[defender][a]
     return utility
 
 def utilityM(d,dm,a,m, dRewards, dPenalties, dCosts):
@@ -134,8 +135,10 @@ def probabilityProtected(dStrats, targetNum):
         protectionOdds.append(1-reduce(mul, [1-odd for odd in probabilities]))
     return protectionOdds
 
-def createGraph(title, xLabel, yLabel, v1, v1Label, v2, v2Label, v3, v3Label, xStart=1):
+def createGraph(title, xLabel, yLabel, v1, v1Label, v2, v2Label, v3, v3Label, v4, v4Label, v5, v5Label, xStart=1):
     g = plt.figure()
+    plt.plot(range(xStart, len(v5) + xStart), v5, 'y', label=f'{v5Label}')
+    plt.plot(range(xStart, len(v4) + xStart), v4, 'm', label=f'{v4Label}')
     plt.plot(range(xStart, len(v3) + xStart), v3, 'r', label=f'{v3Label}')
     plt.plot(range(xStart, len(v2) + xStart), v2, 'b', label=f'{v2Label}')
     plt.plot(range(xStart, len(v1) + xStart), v1, 'g', label=f'{v1Label}')
@@ -160,12 +163,78 @@ def solveBPAllowOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTyp
     model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
     model.maximize(objectiveFunction)
     model.solve()
-    return model.solution.get_objective_value()
+    return model.solution.get_objective_value(), model
+
+def solvebpNOOD(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+    _dRewards = copy.deepcopy(dRewards)
+    _dPenalties = copy.deepcopy(dPenalties)
+    _dCosts = copy.deepcopy(dCosts)
+    for m in defenders:
+        _dRewards[m].append(0)
+        _dPenalties[m].append(0)
+        _dCosts[m].append(0)
+    overlapPlacements = getPlacements(defenders, targetNum + 1)
+    placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
+    attackerActions = list(range(targetNum))
+    omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
+    model = Model('BayesianPersuasionSolverWithOverlap')
+    w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
+    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
+    model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
+    model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
+                           sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
+                           for m in defenders for d in range(targetNum + 1) for e in range(targetNum + 1) if d != e for lam in aTypes], names=[f"defender {m} suggested {d}, but goes to {e} with att {lam}" for m in defenders for d in range(targetNum + 1) for e in range(targetNum + 1) if d != e for lam in aTypes])
+    model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes], names=[f"sum must be 1 for att: {lam}" for lam in aTypes])
+    model.maximize(objectiveFunction)
+    model.solve()
+    print(model.get_solve_status())
+    print(f"dRewawrds: {_dRewards}")
+    print(f"dPenalties: {_dPenalties}")
+    print(f"dCosts: {_dCosts}")
+    print(f"aRewards: {aRewards}")
+    print(f"aPenalties: {aPenalties}")
+    model.export(f"NOODBad.lp")
+    return model.solution.get_objective_value(), model
+
+def solvebpNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+    _dRewards = copy.deepcopy(dRewards)
+    _dPenalties = copy.deepcopy(dPenalties)
+    _dCosts = copy.deepcopy(dCosts)
+    for m in defenders:
+        for defenderCount in defenders:
+            _dRewards[m].append(0)
+            _dPenalties[m].append(0)
+            _dCosts[m].append(0)
+    overlapPlacements = getPlacements(defenders, targetNum + len(defenders))
+    placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
+    attackerActions = list(range(targetNum))
+    omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
+    model = Model('BayesianPersuasionSolverWithOverlap')
+    w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
+    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
+    model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
+    model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
+                           sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
+                           for m in defenders for d in range(targetNum + len(defenders)) for e in range(targetNum + len(defenders)) if d != e for lam in aTypes])
+    model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
+    model.maximize(objectiveFunction)
+    model.solve()
+    # print(f"BPNOND strat:")
+    # value = 0
+    # for k, v in w.items():
+    #     s, a, lam = k
+    #     dUtility = 0
+    #     for defender in defenders:
+    #         dUtility += utilityM(s[defender],s,a,defender, _dRewards, _dPenalties, _dCosts) * q[lam]
+    #     print(f"strat: {k}, probability: {float(v)}, utility: {dUtility}, expectedUtility: {dUtility*float(v)}")
+    #     value += dUtility*float(v)
+    # print(value)
+    return model.solution.get_objective_value(), model
 
 def solveBPNoRequiredDefenderAssignment(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    _dRewards = dRewards.copy()
-    _dPenalties = dPenalties.copy()
-    _dCosts = dCosts.copy()
+    _dRewards = copy.deepcopy(dRewards)
+    _dPenalties = copy.deepcopy(dPenalties)
+    _dCosts = copy.deepcopy(dCosts)
     for m in defenders:
         _dRewards[m].append(0)
         _dPenalties[m].append(0)
@@ -176,6 +245,7 @@ def solveBPNoRequiredDefenderAssignment(targetNum, defenders, dRewards, dPenalti
     model = Model('BayesianPersuasionSolverWithoutRequiredAssignment')
     w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
     objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
+
     model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
     model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
                            sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
@@ -183,7 +253,17 @@ def solveBPNoRequiredDefenderAssignment(targetNum, defenders, dRewards, dPenalti
     model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
     model.maximize(objectiveFunction)
     model.solve()
-    return model.solution.get_objective_value()
+    # print(f"BPnRDA strat:")
+    # value = 0
+    # for k, v in w.items():
+    #     s, a, lam = k
+    #     dUtility = 0
+    #     for defender in defenders:
+    #         dUtility += utilityM(s[defender],s,a,defender, _dRewards, _dPenalties, _dCosts) * q[lam]
+    #     print(f"strat: {k}, probability: {float(v)}, utility: {dUtility}, expectedUtility: {dUtility*float(v)}")
+    #     value += dUtility*float(v)
+    # print(value)
+    return model.solution.get_objective_value(), model
 
 def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
     placements = getPlacements(defenders, targetNum)
@@ -219,17 +299,18 @@ def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aR
         aStrat = argmax(expectedUtilities)
     for m in defenders:
         baselineUtility += dStrat[m][aStrat] * (dRewards[m][aStrat] + dCosts[m][aStrat]) + (1-dStrat[m][aStrat]) * (dPenalties[m][aStrat] + dCosts[m][aStrat])
-    return baselineUtility
+    return baselineUtility, models
 
-def iterateTargets(targetNum, avgCount, bpOverbudget, bpNRDAOverbudget, baselineOverbudget):
-    bpBelowBudget = True
-    bpNRDABelowBudget = True
-    baselineBelowBudget = True
+def iterateTargets(targetNum, avgCount, bpOverbudget, bpNOODOverbudget, bpNONDOverbudget, bpNRDAOverbudget, baselineOverbudget):
     bpUtility = 0
-    bpTime = 0
+    bpNOODUtility = 0
+    bpNONDUtility = 0
     bpNRDAUtility = 0
-    bpNRDATime = 0
     baselineUtility = 0
+    bpTime = 0
+    bpNOODTime = 0
+    bpNONDTime = 0
+    bpNRDATime = 0
     baselineTime = 0
     for _ in range(avgCount):
         # print(f"set {_} of avgCount")
@@ -240,16 +321,39 @@ def iterateTargets(targetNum, avgCount, bpOverbudget, bpNRDAOverbudget, baseline
         # BP Allow Overlap
         if not bpOverbudget:
             bpStart = getTime()
-            bpUtility += solveBPAllowOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+            bpScore, bpModel = solveBPAllowOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+            bpUtility += bpScore
             bpTime += getTime() - bpStart
         else:
             bpUtility = None
             bpTime = None
 
+        # BP No Overlap 1 dummy target
+        if not bpNOODOverbudget:
+            bpNOODStart = getTime()
+            # bpNOODScore, bpNOODModel = solvebpNOOD(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+            bpNOODScore = 0
+            bpNOODUtility += bpNOODScore
+            bpNOODTime += getTime() - bpNOODStart
+        else:
+            bpNOODUtility = None
+            bpNOODTime = None
+
+        # BP No Overlap n dummy targets (matches defender count)
+        if not bpNONDOverbudget:
+            bpNONDStart = getTime()
+            bpNONDScore, bpNONDModel = solvebpNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+            bpNONDUtility += bpNONDScore
+            bpNONDTime += getTime() - bpNONDStart
+        else:
+            bpNONDUtility = None
+            bpNONDTime = None
+
         # BP No Required Assignment
         if not bpNRDAOverbudget:
             bpNRDAStart = getTime()
-            bpNRDAUtility += solveBPNoRequiredDefenderAssignment(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+            bpNRDAScore, bpNRDAModel = solveBPNoRequiredDefenderAssignment(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+            bpNRDAUtility += bpNRDAScore
             bpNRDATime += getTime() - bpNRDAStart
         else:
             bpNRDAUtility = None
@@ -258,7 +362,8 @@ def iterateTargets(targetNum, avgCount, bpOverbudget, bpNRDAOverbudget, baseline
         # # Build the Baseline Model
         if not baselineOverbudget:
             baselineStart = getTime()
-            baselineUtility += solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+            baselineScore, baselineModels = solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+            baselineUtility += baselineScore
             baselineTime += getTime() - baselineStart
         else:
             baselineUtility = None
@@ -266,20 +371,26 @@ def iterateTargets(targetNum, avgCount, bpOverbudget, bpNRDAOverbudget, baseline
     if not bpOverbudget:
         bpUtility /= avgCount
         bpTime /= avgCount
+    if not bpNOODOverbudget:
+        bpNOODUtility /= avgCount
+        bpNOODTime /= avgCount
+    if not bpNONDOverbudget:
+        bpNONDUtility /= avgCount
+        bpNONDTime /= avgCount
     if not bpNRDAOverbudget:
         bpNRDAUtility /= avgCount
         bpNRDATime /= avgCount
     if not baselineOverbudget:
         baselineUtility /= avgCount
         baselineTime /= avgCount
-    return bpUtility, bpTime, bpNRDAUtility, bpNRDATime, baselineUtility, baselineTime
+    return bpUtility, bpTime, bpNOODUtility, bpNOODTime, bpNONDUtility, bpNONDTime, bpNRDAUtility, bpNRDATime, baselineUtility, baselineTime
 
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-timeBudget = 0.05 # 30 minutes
+timeBudget = 10 # 30 minutes
 DEFENDERNUM = 2
-ATTACKERNUM = 2
+ATTACKERNUM = 1
 TARGETNUM = 7
 avgCount = 40
 M = 10000
@@ -292,31 +403,50 @@ models = {}
 # ==============================================================================
 avgBPUtils = []
 avgBPTimes = []
+avgbpNOODUtils = []
+avgbpNOODTimes = []
+avgbpNONDUtils = []
+avgbpNONDTimes = []
 avgBPNRDAUtils = []
 avgBPNRDATimes = []
 avgBaselineUtils = []
 avgBaselineTimes = []
 # Iterate over the targets
 bpOver = False
+bpNOODOver = False
+bpNONDOver = False
 bpNRDAOver = False
 baselineOver = False
-for _ in range(3, 51):
-    # print(f"Iteration {_} of {50} for targetCount")
-    bpUtility, bpTime, bpNRDAUtility, bpNRDATime, baselineUtility, baselineTime = iterateTargets(targetNum=_, avgCount=avgCount, bpOverbudget=bpOver, bpNRDAOverbudget=bpNRDAOver, baselineOverbudget=baselineOver)
+for _ in range(2, 9):
+    print(f"Iteration {_} of {9} for targetCount")
+    bpUtility, bpTime, bpNOODUtility, bpNOODTime, bpNONDUtility, bpNONDTime, bpNRDAUtility, bpNRDATime, baselineUtility, baselineTime = iterateTargets(targetNum=_, avgCount=avgCount, bpOverbudget=bpOver, bpNOODOverbudget=bpNOODOver, bpNONDOverbudget=bpNONDOver, bpNRDAOverbudget=bpNRDAOver, baselineOverbudget=baselineOver)
+    print(bpNONDTime)
     if bpTime is not None and bpTime > timeBudget:
         bpOver = True
+    if bpNOODTime is not None and bpNOODTime > timeBudget:
+        bpNOODOver = True
+    if bpNONDTime is not None and bpNONDTime > timeBudget:
+        bpNONDOver = True
     if bpNRDATime is not None and bpNRDATime > timeBudget:
         bpNRDAOver = True
     if bpOver and bpNRDAOver:
         baselineOver = True
     avgBPUtils.append(bpUtility)
     avgBPTimes.append(bpTime)
+    avgbpNOODUtils.append(bpNOODUtility)
+    avgbpNOODTimes.append(bpNOODTime)
+    avgbpNONDUtils.append(bpNONDUtility)
+    avgbpNONDTimes.append(bpNONDTime)
     avgBPNRDAUtils.append(bpNRDAUtility)
     avgBPNRDATimes.append(bpNRDATime)
     avgBaselineUtils.append(baselineUtility)
     avgBaselineTimes.append(baselineTime)
-uGraph = createGraph("Average Utilities", "Number of Targets", "Utility", avgBPUtils, "BP Utility", avgBPNRDAUtils, "BPNRD Utility", avgBaselineUtils, "Baseline Utility", xStart = 3)
-tGraph = createGraph("Average Runtimes", "Number of Targets", "Runtime", avgBPTimes, "Persuasion Scheme Time", avgBPNRDATimes, "BPNRD Time", avgBaselineTimes, "Baseline Time", xStart = 3)
+    print(f"BP: {bpUtility}")
+    print(f"NOOD: {bpNOODUtility}")
+    print(f"NOND: {bpNONDUtility}")
+    print(f"NRDA: {bpNRDAUtility}")
+uGraph = createGraph("Average Utilities", "Number of Targets", "Utility", avgBPUtils, "BP Utility", avgbpNOODUtils, "BPRNOOD Utility", avgbpNONDUtils, "BPRNOND Utility", avgBPNRDAUtils, "BPNRD Utility", avgBaselineUtils, "Baseline Utility", xStart = 2)
+tGraph = createGraph("Average Runtimes", "Number of Targets", "Runtime", avgBPTimes, "Persuasion Scheme Time", avgbpNOODTimes, "BPRNOOD Time", avgbpNONDTimes, "BPRNOND Time", avgBPNRDATimes, "BPNRD Time", avgBaselineTimes, "Baseline Time", xStart = 2)
 # Iterate over the defenders
 # Iterate over the attackers
 
