@@ -1,0 +1,7 @@
+import random
+RAND = random.Random()
+DEFENDERNUM = 2
+ATTACKERNUM = 1
+TARGETNUM = 7
+AVGCOUNT = 40
+M = 10000
