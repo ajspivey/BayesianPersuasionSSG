@@ -1,3 +1,14 @@
+from docplex.mp.model import Model
+from itertools import permutations
+from functools import reduce
+from operator import mul
+from numpy import argmax
+from time import time as getTime
+import matplotlib.pyplot as plt
+import random
+import copy
+
+from constants import RAND,DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
 # ==============================================================================
 # FUNCTIONS
 # ==============================================================================
@@ -14,8 +25,8 @@ def generateRandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCei
         dCosts[m] = []
         for i in range(targetNum):
             dRewards[m].append(0)
-            dPenalties[m].append(-1 * randThing.randint(1,penaltyCeiling))
-            dCosts[m].append(-1 * randThing.randint(1,costCeiling))
+            dPenalties[m].append(-1 * RAND.randint(1,penaltyCeiling))
+            dCosts[m].append(-1 * RAND.randint(1,costCeiling))
     return defenders, dRewards, dPenalties, dCosts
 
 # ------------------------------------------------------------------------------
@@ -30,14 +41,14 @@ def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCei
         if len(q) == attackerNum -1:
             q.append(probability)
         else:
-            qVal = randThing.uniform(0,probability)
+            qVal = RAND.uniform(0,probability)
             probability -= qVal
             q.append(qVal)
         aRewards[a] = []
         aPenalties[a] = []
         for i in range(targetNum):
-            aRewards[a].append(randThing.randint(1,rewardCeiling))
-            aPenalties[a].append(-1 * randThing.randint(1,penaltyCeiling))
+            aRewards[a].append(RAND.randint(1,rewardCeiling))
+            aPenalties[a].append(-1 * RAND.randint(1,penaltyCeiling))
     return attackers, aRewards, aPenalties, q
 
 # ------------------------------------------------------------------------------

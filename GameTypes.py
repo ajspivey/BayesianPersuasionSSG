@@ -1,3 +1,22 @@
+from docplex.mp.model import Model
+from itertools import permutations
+from functools import reduce
+from operator import mul
+from numpy import argmax
+from time import time as getTime
+import matplotlib.pyplot as plt
+import random
+import copy
+
+from constants import RAND,DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
+from util import generateRandomDefenders, generateRandomAttackers, numberToBase, \
+                getPlacements, getOmegaKeys, defenderSocialUtility, utilityM, \
+                aUtility, getLambdaPlacements, utilityDI, utilityLamI, \
+                probabilityProtected, createGraph
+
+defenderUtilities = []
+solutionTimes = []
+models = {}
 # ==========
 # GAME TYPES
 # ==========
@@ -46,7 +65,7 @@ def solveBPNoRequiredDefenderAssignment(targetNum, defenders, dRewards, dPenalti
     return model.solution.get_objective_value(), model
 
 # ------------------------------------------------------------------------------
-def solvebpNOOD(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+def solveBPNOOD(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
     """A game where defender assignments are not allowed to overlap, with one dummy target (represents one defender that does not have to be assigned)"""
     _dRewards = copy.deepcopy(dRewards)
     _dPenalties = copy.deepcopy(dPenalties)
@@ -72,7 +91,7 @@ def solvebpNOOD(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRew
     return model.solution.get_objective_value(), model
 
 # ------------------------------------------------------------------------------
-def solvebpNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+def solveBPNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
     """A game where defender assignments are not allowed to overlap, with as many dummy targets as defenders (represents defenders not having to be assigned)"""
     _dRewards = copy.deepcopy(dRewards)
     _dPenalties = copy.deepcopy(dPenalties)
