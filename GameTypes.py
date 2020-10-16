@@ -137,8 +137,8 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
     placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
     # Generate the keys
     attackerActions = list(range(targetNum))
-    abKeys = [(t,tPrime,lam) for t in range(targetNumWithDummies) for tPrime in range(targetNumWithDummies) for lam in aTypes]
-    print(abKeys)
+    aKeys = [(t,tPrime,lam) for t in attackerActions for tPrime in attackerActions for lam in aTypes]
+    bKeys = [(t,tPrime,lam) for t in range(targetNumWithDummies) for tPrime in range(targetNumWithDummies) for lam in aTypes]
     # Get a random subset of the placements
     subsetCount = len(placements)//5
     subsetS = random.choices(placements, k=subsetCount)
@@ -147,12 +147,15 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
     while True:
         relaxedModel = Model('relaxedModel')
         g = relaxedModel.continuous_var_dict(keys=aTypes, lb=0, ub=1, name="gamma")
-        a = relaxedModel.continuous_var_dict(keys=abKeys, lb=0, ub=1, name="alpha")
-        b = relaxedModel.continuous_var_dict(keys=abKeys, lb=0, ub=1, name="beta")
+        a = relaxedModel.continuous_var_dict(keys=aKeys, lb=0, ub=1, name="alpha")
+        b = relaxedModel.continuous_var_dict(keys=bKeys, lb=0, ub=1, name="beta")
         objectiveFunction = sum([g[lam] for lam in aTypes])
-        relaxedModel.add_constraints([sum([(aUtility(sd,tPrime,lam,aPenalties,aRewards) - aUtility(sd,sa,lam,aPenalties,aRewards)) * a[sa,tPrime,lam] for tPrime in attackerActions]) + sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,lam] + g[lam] for d in defenders for tPrime in attackerActions]) >= q[lam] * defenderSocialUtility(sd, sa, defenders, _dCosts, _dPenalties) for sd in subsetS for sa in attackerActions for lam in aTypes])
+        relaxedModel.add_constraints([sum([(aUtility(sd,tPrime,lam,aPenalties,aRewards) - aUtility(sd,sa,lam,aPenalties,aRewards)) * a[sa,tPrime,lam] for tPrime in attackerActions]) \
+                                    + sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,lam] + g[lam] for d in defenders for tPrime in attackerActions]) \
+                                    >= q[lam] * defenderSocialUtility(sd, sa, defenders, _dCosts, _dPenalties) for sd in subsetS for sa in attackerActions for lam in aTypes])
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
+        print(relaxedModel.solution.get_objective_value())
 
         # Solve equation (9) for each fixed attacker type and attacked target
         lowestValue = None
@@ -160,8 +163,9 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
         lowestT0 = None
         for t0 in attackerActions:
             for lam in aTypes:
-                value = 6 #sum([(aUtility(sd,tPrime) - aUtility(sd,sa,lam,aPenalties,aRewards)) * a[t0,tPrime,lam] for tPrime in attackerActions]) + sum([(utilityM(tPrime,sd,t0,d,dRewards,dPenalties,dCosts) - utilityM(sd[d],sd,sa,d,dRewards,dPenalties,dCosts)) * b[sd,tPrime,lam] for d in defenders for tPrime in attackerActions]) - q[lam] * defenderSocialUtility(s,a,defenders, dCosts, dPenalties) for sd in subsetS for sa in attackerActions for lam in aTypes]
+                value = min([sum([(aUtility(sd,tPrime,lam,aPenalties,aRewards) - aUtility(sd,t0,lam,aPenalties,aRewards)) * float(a[t0,tPrime,lam]) for tPrime in attackerActions]) + sum([(utilityM(tPrime,sd,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,lam]) - q[lam] * defenderSocialUtility(sd, t0, defenders, _dCosts, _dPenalties) for d in defenders for tPrime in attackerActions]) for sd in subsetS])
                 # If any are negative, that solution s* violates a constraint
+                print(value)
                 if value < 0:
                     if lowestValue is None or value < lowestValue:
                         lowestValue = value
