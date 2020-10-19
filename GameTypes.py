@@ -126,54 +126,74 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
     _dRewards = copy.deepcopy(dRewards)
     _dPenalties = copy.deepcopy(dPenalties)
     _dCosts = copy.deepcopy(dCosts)
+    _aRewards = copy.deepcopy(aRewards)
+    _aPenalties = copy.deepcopy(aPenalties)
     for m in defenders:
         for defenderCount in defenders:
             _dRewards[m].append(0)
             _dPenalties[m].append(0)
             _dCosts[m].append(0)
+        for lam in aTypes:
+            _aRewards[lam].append(0)
+            _aPenalties[lam].append(0)
     targetNumWithDummies = len(_dRewards[0])
+    targetRange = list(range(targetNumWithDummies))
     # Get the placements that occur with no overlap
-    overlapPlacements = getPlacements(defenders, targetNum + len(defenders))
+    overlapPlacements = getPlacements(defenders, targetNumWithDummies)
     placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
     # Generate the keys
-    attackerActions = list(range(targetNum))
-    aKeys = [(t,tPrime,lam) for t in attackerActions for tPrime in attackerActions for lam in aTypes]
-    bKeys = [(t,tPrime,lam) for t in range(targetNumWithDummies) for tPrime in range(targetNumWithDummies) for lam in aTypes]
+    aKeys = [(t,tPrime,lam) for t in targetRange for tPrime in targetRange for lam in aTypes]
+    bKeys = [(t,tPrime,d) for t in targetRange for tPrime in targetRange for d in defenders]
     # Get a random subset of the placements
-    subsetCount = len(placements)//5
+    subsetCount = 5 #len(placements)//5
     subsetS = random.choices(placements, k=subsetCount)
 
     # Generate the dual model using the limited set of placements
     while True:
         relaxedModel = Model('relaxedModel')
-        g = relaxedModel.continuous_var_dict(keys=aTypes, lb=0, ub=1, name="gamma")
-        a = relaxedModel.continuous_var_dict(keys=aKeys, lb=0, ub=1, name="alpha")
-        b = relaxedModel.continuous_var_dict(keys=bKeys, lb=0, ub=1, name="beta")
+        g = relaxedModel.continuous_var_dict(keys=aTypes, lb=0, ub=1, name="g")
+        a = relaxedModel.continuous_var_dict(keys=aKeys, lb=0, ub=1, name="a")
+        b = relaxedModel.continuous_var_dict(keys=bKeys, lb=0, ub=1, name="b")
         objectiveFunction = sum([g[lam] for lam in aTypes])
-        relaxedModel.add_constraints([sum([(aUtility(sd,tPrime,lam,aPenalties,aRewards) - aUtility(sd,sa,lam,aPenalties,aRewards)) * a[sa,tPrime,lam] for tPrime in attackerActions]) \
-                                    + sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,lam] + g[lam] for d in defenders for tPrime in attackerActions]) \
-                                    >= q[lam] * defenderSocialUtility(sd, sa, defenders, _dCosts, _dPenalties) for sd in subsetS for sa in attackerActions for lam in aTypes])
+
+        dualConstraints = relaxedModel.add_constraints([                            \
+            sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[sa,tPrime,lam] for tPrime in targetRange]) + \
+            sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,d]  for d in defenders for tPrime in targetRange]) + \
+            g[lam] \
+            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
+            for sd in subsetS for sa in targetRange for lam in aTypes])
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
+        relaxedModel.export(f"relaxedModel.lp")
+
         print(relaxedModel.solution.get_objective_value())
 
         # Solve equation (9) for each fixed attacker type and attacked target
         lowestValue = None
         lowestAType = None
         lowestT0 = None
-        for t0 in attackerActions:
+        for t0 in targetRange:
             for lam in aTypes:
-                value = min([sum([(aUtility(sd,tPrime,lam,aPenalties,aRewards) - aUtility(sd,t0,lam,aPenalties,aRewards)) * float(a[t0,tPrime,lam]) for tPrime in attackerActions]) + sum([(utilityM(tPrime,sd,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,lam]) - q[lam] * defenderSocialUtility(sd, t0, defenders, _dCosts, _dPenalties) for d in defenders for tPrime in attackerActions]) for sd in subsetS])
-                # If any are negative, that solution s* violates a constraint
+                values = [\
+                    sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange]) + \
+                    sum([(utilityM(tPrime,sd,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d]) for d in defenders for tPrime in targetRange]) - \
+                    (q[lam] * defenderSocialUtility(sd,t0,defenders,_dCosts,_dPenalties))
+                    for sd in placements]
+                print(values)
+                value = min(values)
                 print(value)
+                # value = min([sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange]) + sum([(utilityM(tPrime,sd,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d]) - q[lam] * defenderSocialUtility(sd, t0, defenders, _dCosts, _dPenalties) for d in defenders for tPrime in targetRange]) for sd in subsetS])
+                # If any are negative, that solution s* violates a constraint
                 if value < 0:
                     if lowestValue is None or value < lowestValue:
                         lowestValue = value
                         lowestAType = lam
                         lowestT0 = t0
         # If there are no violated constraints, return the solution
-        if lowestValue is None:
-            return relaxedModel.solution.get_objective_value(), relaxedModel
+        # if lowestValue is None:
+        #     return relaxedModel.solution.get_objective_value(), relaxedModel
+        lowestAType = 0
+        lowestT0 = 0
         # Otherwise, find the most negative of these to obtain an attacker type and attacked target
         #   Split the problem into two sub problems by doing the following:
         #       Given attacker type and attacked target, split s into two groups:
@@ -182,15 +202,23 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
         # Solve the first problem as a maximum bipartite matching between |T| defenders
         #    and |T| + |D| targets (including the |D| additional dummy targets)
         # Define the weights for each defender/target pair
-        # weights = {}
-        # for d in defenders:
-        #     for t in len(_dRewards[d]):
-        #         weights[(d,t)] = ?
-        #     weights[(d,lowestT0)] = M # A huge number: "infinity"
-        #
-        # for d in range(len(defenders), numTargets):
-        #     for t in len(_dRewards[0]):
-        #         weights[(d,t)] = ?
+
+        weights = {}
+        for d in defenders:
+            for t in range(targetNumWithDummies):
+                if t != lowestT0:
+                    weights[(d,t)] = -q[lowestAType]*_dCosts[d][t] \
+                                    + (_dRewards[d][lowestT0] + _dCosts[d][lowestT0] - _dCosts[d][t]) * b[t, lowestT0, d] \
+                                    + sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * b[t,tPrime,d] for tPrime in targetRange if tPrime != lowestT0]) \
+                                    + (aPenalties[lowestAType][t] - aRewards[lowestAType][lowestT0]) * a[lowestT0, t, lowestAType]
+            weights[(d,lowestT0)] = M # A huge number: "infinity"
+        # Add in the extra defenders
+        print()
+        for d in range(len(defenders), numTargets):
+            print(d)
+            for t in range(targetNumWithDummies):
+                weights[(d,t)] = (aRewards[lowestAType][t] - aRewards[lowestAType][lowestT0]) * a[lowestT0,t,lowestAType]
+
         # Solve the second problem as a maximum bipartite matching between |T| - 1
         #    defenders and |T| + |D| - 1 targets
         # Do something with the solutions to these problems
