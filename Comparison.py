@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import copy
 
 # Internal Imports
-from constants import RAND,DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
+from constants import DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
 from util import generateRandomDefenders, generateRandomAttackers, numberToBase, \
                 getPlacements, getOmegaKeys, defenderSocialUtility, utilityM, \
                 aUtility, getLambdaPlacements, utilityDI, utilityLamI, \

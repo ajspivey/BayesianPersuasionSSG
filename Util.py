@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 import random
 import copy
 
-from constants import RAND,DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
+from constants import DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
 # ==============================================================================
 # FUNCTIONS
 # ==============================================================================
 # ------------------------------------------------------------------------------
-def generateRandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCeiling=20, costCeiling=10):
+def generaterandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCeiling=20, costCeiling=10):
     """Generates defenders with random rewards, penalties, and costs, given a number of targets"""
     defenders = list(range(defenderNum))
     dRewards = {}
@@ -25,12 +25,12 @@ def generateRandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCei
         dCosts[m] = []
         for i in range(targetNum):
             dRewards[m].append(0)
-            dPenalties[m].append(-1 * RAND.randint(1,penaltyCeiling))
-            dCosts[m].append(-1 * RAND.randint(1,costCeiling))
+            dPenalties[m].append(-1 * random.randomint(1,penaltyCeiling))
+            dCosts[m].append(-1 * random.randomint(1,costCeiling))
     return defenders, dRewards, dPenalties, dCosts
 
 # ------------------------------------------------------------------------------
-def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCeiling=20):
+def generaterandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCeiling=20):
     """Generates defenders with random rewards and penalties given a number of targets"""
     probability = 1.0
     attackers = list(range(attackerNum))
@@ -41,14 +41,14 @@ def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCei
         if len(q) == attackerNum -1:
             q.append(probability)
         else:
-            qVal = RAND.uniform(0,probability)
+            qVal = random.uniform(0,probability)
             probability -= qVal
             q.append(qVal)
         aRewards[a] = []
         aPenalties[a] = []
         for i in range(targetNum):
-            aRewards[a].append(RAND.randint(1,rewardCeiling))
-            aPenalties[a].append(-1 * RAND.randint(1,penaltyCeiling))
+            aRewards[a].append(random.randomint(1,rewardCeiling))
+            aPenalties[a].append(-1 * random.randomint(1,penaltyCeiling))
     return attackers, aRewards, aPenalties, q
 
 # ------------------------------------------------------------------------------

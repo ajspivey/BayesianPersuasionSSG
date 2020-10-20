@@ -10,8 +10,8 @@ from numpy import argmax
 from time import time as getTime
 import random
 
-RAND = random.Random()
-# RAND.seed(10)
+random = random.Random()
+# random.seed(10)
 
 # ==============================================================================
 # FUNCTIONS
@@ -27,8 +27,8 @@ def generateRandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCei
         dCosts[m] = []
         for i in range(targetNum):
             dRewards[m].append(0)
-            dPenalties[m].append(-1 * RAND.randint(1,penaltyCeiling))
-            dCosts[m].append(-1 * RAND.randint(1,costCeiling))
+            dPenalties[m].append(-1 * random.randint(1,penaltyCeiling))
+            dCosts[m].append(-1 * random.randint(1,costCeiling))
         dRewards[m].append(0)
         dPenalties[m].append(0)
         dCosts[m].append(0)
@@ -44,14 +44,14 @@ def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCei
         if len(q) == attackerNum -1:
             q.append(probability)
         else:
-            qVal = RAND.uniform(0,probability)
+            qVal = random.uniform(0,probability)
             probability -= qVal
             q.append(qVal)
         aRewards[a] = []
         aPenalties[a] = []
         for i in range(targetNum):
-            aRewards[a].append(RAND.randint(1,rewardCeiling))
-            aPenalties[a].append(-1 * RAND.randint(1,penaltyCeiling))
+            aRewards[a].append(random.randint(1,rewardCeiling))
+            aPenalties[a].append(-1 * random.randint(1,penaltyCeiling))
     return attackers, aRewards, aPenalties, q
 
 def numberToBase(n, b, length):

@@ -1,5 +1,3 @@
-import random
-RAND = random.Random()
 DEFENDERNUM = 2
 ATTACKERNUM = 1
 TARGETNUM = 3

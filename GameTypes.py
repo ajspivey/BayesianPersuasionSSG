@@ -9,7 +9,7 @@ import networkx as nx
 import random
 import copy
 
-from constants import RAND,DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
+from constants import DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
 from util import generateRandomDefenders, generateRandomAttackers, numberToBase, \
                 getPlacements, getOmegaKeys, defenderSocialUtility, utilityM, \
                 aUtility, getLambdaPlacements, utilityDI, utilityLamI, \
@@ -18,6 +18,7 @@ from util import generateRandomDefenders, generateRandomAttackers, numberToBase,
 defenderUtilities = []
 solutionTimes = []
 models = {}
+
 # ==========
 # GAME TYPES
 # ==========
@@ -207,7 +208,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                     for t in targetRange:
                         if t != t0:
                             weightValue = -q[lam]*_dCosts[d][t] \
-                                            + (_dRewards[d][t0] + _dCosts[d][t0] - _dPenalties[d][t0] - _dCosts[d][sd[d]]) * float(b[t, t0, d]) \
+                                            + (_dRewards[d][t0] + _dCosts[d][t0] - _dPenalties[d][t0] - _dCosts[d][t]) * float(b[t, t0, d]) \
                                             + sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[t,tPrime,d]) for tPrime in targetRange if tPrime != t0]) \
                                             + (_aPenalties[lam][t] - _aRewards[lam][t0]) * float(a[t0, t, lam])
                             edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
@@ -227,15 +228,15 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                 # Convert the solution back into our setting and calculate the cost
                 cost = 0
                 s = [0] * len(defenders)
-                for k,v in list(matchings.items())[:targetNumWithDummies]:
+                for k,v in matchings.items():
                     defender = int(k.split("_")[1])
                     target = int(v.split("_")[1])
                     if k.startswith("d_"):
                         s[defender] = target
-                    cost += edges[k][v]["weight"]
+                        cost += edges[k][v]["weight"]
+                    elif k.startswith("ed_"):
+                        cost += edges[k][v]["weight"]
                 solutions.append((s,cost))
-
-
                 # Solve the problem
             print(solutions)
             asdfasdf
