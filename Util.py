@@ -25,8 +25,8 @@ def generateRandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCei
         dCosts[m] = []
         for i in range(targetNum):
             dRewards[m].append(0)
-            dPenalties[m].append(-1 * random.randomint(1,penaltyCeiling))
-            dCosts[m].append(-1 * random.randomint(1,costCeiling))
+            dPenalties[m].append(-1 * random.randint(1,penaltyCeiling))
+            dCosts[m].append(-1 * random.randint(1,costCeiling))
     return defenders, dRewards, dPenalties, dCosts
 
 # ------------------------------------------------------------------------------
@@ -47,8 +47,8 @@ def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCei
         aRewards[a] = []
         aPenalties[a] = []
         for i in range(targetNum):
-            aRewards[a].append(random.randomint(1,rewardCeiling))
-            aPenalties[a].append(-1 * random.randomint(1,penaltyCeiling))
+            aRewards[a].append(random.randint(1,rewardCeiling))
+            aPenalties[a].append(-1 * random.randint(1,penaltyCeiling))
     return attackers, aRewards, aPenalties, q
 
 # ------------------------------------------------------------------------------
