@@ -13,7 +13,7 @@ from constants import DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
 # FUNCTIONS
 # ==============================================================================
 # ------------------------------------------------------------------------------
-def generaterandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCeiling=20, costCeiling=10):
+def generateRandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCeiling=20, costCeiling=10):
     """Generates defenders with random rewards, penalties, and costs, given a number of targets"""
     defenders = list(range(defenderNum))
     dRewards = {}
@@ -30,7 +30,7 @@ def generaterandomDefenders(defenderNum, targetNum, rewardCeiling=20, penaltyCei
     return defenders, dRewards, dPenalties, dCosts
 
 # ------------------------------------------------------------------------------
-def generaterandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCeiling=20):
+def generateRandomAttackers(attackerNum, targetNum, rewardCeiling=20, penaltyCeiling=20):
     """Generates defenders with random rewards and penalties given a number of targets"""
     probability = 1.0
     attackers = list(range(attackerNum))
