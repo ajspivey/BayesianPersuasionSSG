@@ -10,9 +10,6 @@ from numpy import argmax
 from time import time as getTime
 import random
 
-random = random.Random()
-# random.seed(0)
-
 # ==============================================================================
 # FUNCTIONS
 # ==============================================================================

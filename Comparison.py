@@ -9,6 +9,7 @@ from operator import mul
 from numpy import argmax
 from time import time as getTime
 import matplotlib.pyplot as plt
+import random
 import copy
 
 # Internal Imports

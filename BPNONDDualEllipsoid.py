@@ -9,6 +9,7 @@ from operator import mul
 from numpy import argmax
 from time import time as getTime
 import matplotlib.pyplot as plt
+import random
 import copy
 
 # Internal Imports
@@ -19,6 +20,8 @@ from util import generateRandomDefenders, generateRandomAttackers, numberToBase,
                 probabilityProtected, createGraph
 from gameTypes import solveBPAllowOverlap, solveBPNoRequiredDefenderAssignment, \
                     solveBPNOOD, solveBPNOND, solveBaseline, solveBPNONDDualEllipsoid
+
+random.seed(0)
 
 # ==============================================================================
 # FUNCTIONS
