@@ -5,6 +5,7 @@ from operator import mul
 from numpy import argmax
 from time import time as getTime
 import matplotlib.pyplot as plt
+import networkx as nx
 import random
 import copy
 
@@ -138,6 +139,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
             _aPenalties[lam].append(0)
     targetNumWithDummies = len(_dRewards[0])
     targetRange = list(range(targetNumWithDummies))
+
     # Get the placements that occur with no overlap
     overlapPlacements = getPlacements(defenders, targetNumWithDummies)
     placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
@@ -145,7 +147,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
     aKeys = [(t,tPrime,lam) for t in targetRange for tPrime in targetRange for lam in aTypes]
     bKeys = [(t,tPrime,d) for t in targetRange for tPrime in targetRange for d in defenders]
     # Get a random subset of the placements
-    subsetCount = 5 #len(placements)//5
+    subsetCount = len(defenders)
     subsetS = random.choices(placements, k=subsetCount)
 
     # Generate the dual model using the limited set of placements
@@ -166,12 +168,9 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
         relaxedModel.export(f"relaxedModel.lp")
 
-        print(relaxedModel.solution.get_objective_value())
-
-        # Solve equation (9) for each fixed attacker type and attacked target
-        lowestValue = None
-        lowestAType = None
-        lowestT0 = None
+        # Determine the violated constraints from the solution s* above (represented
+        # by alpha and beta)
+        violatedPairs = []
         for t0 in targetRange:
             for lam in aTypes:
                 values = [\
@@ -179,49 +178,105 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                     sum([(utilityM(tPrime,sd,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d]) for d in defenders for tPrime in targetRange]) - \
                     (q[lam] * defenderSocialUtility(sd,t0,defenders,_dCosts,_dPenalties))
                     for sd in placements]
-                print(values)
                 value = min(values)
-                print(value)
-                # value = min([sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange]) + sum([(utilityM(tPrime,sd,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d]) - q[lam] * defenderSocialUtility(sd, t0, defenders, _dCosts, _dPenalties) for d in defenders for tPrime in targetRange]) for sd in subsetS])
-                # If any are negative, that solution s* violates a constraint
+                # If any are negative, that solution s* violates the constraint represented by lam,t0
+                # Add it to the set of problems to solve (9) for.
                 if value < 0:
-                    if lowestValue is None or value < lowestValue:
-                        lowestValue = value
-                        lowestAType = lam
-                        lowestT0 = t0
+                    violatedPairs.append((lam,t0))
+
         # If there are no violated constraints, return the solution
-        # if lowestValue is None:
-        #     return relaxedModel.solution.get_objective_value(), relaxedModel
-        lowestAType = 0
-        lowestT0 = 0
-        # Otherwise, find the most negative of these to obtain an attacker type and attacked target
-        #   Split the problem into two sub problems by doing the following:
-        #       Given attacker type and attacked target, split s into two groups:
-        #        none of the defenders is assigned to the attacked target, and
-        #        one of the defenders is assigned to the attacked target
-        # Solve the first problem as a maximum bipartite matching between |T| defenders
-        #    and |T| + |D| targets (including the |D| additional dummy targets)
-        # Define the weights for each defender/target pair
+        if len(violatedPairs) == 0:
+            print("NO VIOLATED CONSTRAINTS -- RETURNING SOLUTION")
+            return relaxedModel.solution.get_objective_value(), relaxedModel
+        else:
+            print("VIOLATED CONSTRAINTS")
 
-        weights = {}
-        for d in defenders:
-            for t in range(targetNumWithDummies):
-                if t != lowestT0:
-                    weights[(d,t)] = -q[lowestAType]*_dCosts[d][t] \
-                                    + (_dRewards[d][lowestT0] + _dCosts[d][lowestT0] - _dCosts[d][t]) * b[t, lowestT0, d] \
-                                    + sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * b[t,tPrime,d] for tPrime in targetRange if tPrime != lowestT0]) \
-                                    + (aPenalties[lowestAType][t] - aRewards[lowestAType][lowestT0]) * a[lowestT0, t, lowestAType]
-            weights[(d,lowestT0)] = M # A huge number: "infinity"
-        # Add in the extra defenders
-        print()
-        for d in range(len(defenders), numTargets):
-            print(d)
-            for t in range(targetNumWithDummies):
-                weights[(d,t)] = (aRewards[lowestAType][t] - aRewards[lowestAType][lowestT0]) * a[lowestT0,t,lowestAType]
+        # For each violated constraint lam,t0, split (9) into two subproblems and solve each
+        for lam, t0 in violatedPairs:
+            # Subproblem 1
+            # These are the placements that do not cover t0.
+            # For each of these placements s, define a set of weights to make a
+            # graph, adding extra defenders as necessary for a maximum bipartite
+            # matching problem
+            solutions = []
+            for sd in placements:
 
-        # Solve the second problem as a maximum bipartite matching between |T| - 1
-        #    defenders and |T| + |D| - 1 targets
-        # Do something with the solutions to these problems
+                edges = {}
+                # Build the weights
+                for d in defenders:
+                    edges[f"d_{d}"] = {}
+                    for t in targetRange:
+                        if t != t0:
+                            weightValue = -q[lam]*_dCosts[d][t] \
+                                            + (_dRewards[d][t0] + _dCosts[d][t0] - _dPenalties[d][t0] - _dCosts[d][sd[d]]) * float(b[t, t0, d]) \
+                                            + sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[t,tPrime,d]) for tPrime in targetRange if tPrime != t0]) \
+                                            + (_aPenalties[lam][t] - _aRewards[lam][t0]) * float(a[t0, t, lam])
+                            edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
+                        else:
+                            weightValue = M
+                            edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
+                for d in range(len(defenders), targetNumWithDummies):
+                    edges[f"ed_{d}"] = {}
+                    for t in targetRange:
+                        weightValue = (_aRewards[lam][t] - _aRewards[lam][t0]) * float(a[t0,t,lam])
+                        edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
+
+                # Build the graph
+                G = nx.from_dict_of_dicts(edges)
+                # Solve the problem
+                matchings = nx.algorithms.bipartite.minimum_weight_full_matching(G)
+                # Convert the solution back into our setting and calculate the cost
+                
+
+
+                # Solve the problem
+
+
+            # Subproblem 2
+            # Fix each possible defender that coveres t0. For each of these
+
+
+            # After obtaining solutions to both parts of problem 9, we have two
+            # defender placements paired with t0 to give us a new placement (sd)
+            # to add to the subset considered in the original. We obtain two such
+            # solutions for every violated (lam,t0) pair. Add them all and do the
+            # process again.
+
+
+
+            # weights = {}
+            # for d in defenders:
+            #     for t in targetRange:
+            #         if t != t0:
+            #             pass
+            #             # weights[(d,t)] = -q[lam]*_dCosts[d][t] \
+            #             #                 + (_dRewards[d][t0] + _dCosts[d][t0] - _dCosts[?][t]) * b[t, t0, d] \
+            #             #                 + sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * b[t,tPrime,d] for tPrime in targetRange if tPrime != t0]) \
+            #             #                 + (aPenalties[lam][t] - aRewards[lam][t0]) * a[t0, t, lam]
+            #     weights[(d,t0)] = M # A huge number: "infinity"
+            # # Add in the extra defenders
+            # print("THE EXTRAS")
+            # for d in range(len(defenders), targetNumWithDummies - 1):
+            #     for t in range(targetNumWithDummies):
+            #         weights[(d,t)] = (_aRewards[lam][t] - _aRewards[lam][t0]) * float(a[t0,t,lam])
+            # print(weights)
+
+
+
+            # for d0 in defenders:
+            #     for d in defenders:
+            #         if d != d0:
+            #             for t in targetRange:
+            #                 if t != t0:
+            #     # Add in the extra defenders
+            #     print("THE EXTRAS")
+            #     for d in range(len(defenders), targetNumWithDummies - 1):
+            #         for t in range(targetNumWithDummies):
+            #             weights[(d,t)] = (_aRewards[lam][t] - _aRewards[lam][t0]) * float(a[t0,t,lam])
+            #     print(weights2)
+
+
+
     return model.solution.get_objective_value(), model
 
 # ------------------------------------------------------------------------------
