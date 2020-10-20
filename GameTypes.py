@@ -200,7 +200,6 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
             # matching problem
             solutions = []
             for sd in placements:
-
                 edges = {}
                 # Build the weights
                 for d in defenders:
@@ -226,10 +225,20 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                 # Solve the problem
                 matchings = nx.algorithms.bipartite.minimum_weight_full_matching(G)
                 # Convert the solution back into our setting and calculate the cost
-                
+                cost = 0
+                s = [0] * len(defenders)
+                for k,v in list(matchings.items())[:targetNumWithDummies]:
+                    defender = int(k.split("_")[1])
+                    target = int(v.split("_")[1])
+                    if k.startswith("d_"):
+                        s[defender] = target
+                    cost += edges[k][v]["weight"]
+                solutions.append((s,cost))
 
 
                 # Solve the problem
+            print(solutions)
+            asdfasdf
 
 
             # Subproblem 2
