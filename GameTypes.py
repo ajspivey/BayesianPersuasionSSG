@@ -207,8 +207,9 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                     edges[f"d_{d}"] = {}
                     for t in targetRange:
                         if t != t0:
+                            print(f"t: {t}, d: {d}, t0: {t0}, sd: {sd}, sd[d]: {sd[d]}")
                             weightValue = -q[lam]*_dCosts[d][t] \
-                                            + (_dRewards[d][t0] + _dCosts[d][t0] - _dPenalties[d][t0] - _dCosts[d][t]) * float(b[t, t0, d]) \
+                                            + (_dRewards[d][t0] + _dCosts[d][t0] - _dPenalties[d][t0] - _dCosts[d][sd[d]]) * float(b[t, t0, d]) \
                                             + sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[t,tPrime,d]) for tPrime in targetRange if tPrime != t0]) \
                                             + (_aPenalties[lam][t] - _aRewards[lam][t0]) * float(a[t0, t, lam])
                             edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
@@ -220,6 +221,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                     for t in targetRange:
                         weightValue = (_aRewards[lam][t] - _aRewards[lam][t0]) * float(a[t0,t,lam])
                         edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
+                print()
 
                 # Build the graph
                 G = nx.from_dict_of_dicts(edges)
