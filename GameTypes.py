@@ -157,9 +157,9 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
     # Solve the dual using column generation
     while True:
         relaxedModel = Model('relaxedModel')
-        g = relaxedModel.continuous_var_dict(keys=aTypes, lb=(-1 * relaxedModel.infinity), ub=relaxedModel.infinity, name="g") # unbounded
-        a = relaxedModel.continuous_var_dict(keys=aKeys, lb=0, ub=relaxedModel.infinity, name="a") # No upper bound
-        b = relaxedModel.continuous_var_dict(keys=bKeys, lb=0, ub=relaxedModel.infinity, name="b") # No upper bound
+        g = relaxedModel.continuous_var_dict(keys=aTypes, lb=-100000, ub=100000, name="g") # unbounded
+        a = relaxedModel.continuous_var_dict(keys=aKeys, lb=0, ub=100000, name="a") # No upper bound
+        b = relaxedModel.continuous_var_dict(keys=bKeys, lb=0, ub=100000, name="b") # No upper bound
 
         objectiveFunction = sum([g[lam] for lam in aTypes])
         dualConstraints = relaxedModel.add_constraints([                            \
