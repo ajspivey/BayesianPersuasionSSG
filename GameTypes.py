@@ -167,17 +167,10 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
             sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,d]  for d in defenders for tPrime in targetRange]) + \
             g[lam] \
             >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
-            for sd,sa in subsetS for lam in aTypes], \
-            names=[f"sd {sd}, sa {sa}, lam {lam}" for sd,sa in subsetS for lam in aTypes])
+            for sd,sa in subsetS for lam in aTypes])
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
-        print(relaxedModel.get_solve_status())
-        print(subsetS)
-        print(f"dRewards: {_dRewards}")
-        print(f"dPenalties: {_dPenalties}")
-        print(f"dCosts: {_dCosts}")
-        print(f"aRewards: {_aRewards}")
-        print(f"aPenalties: {_aPenalties}")
+        print(relaxedModel.solution.get_objective_value())
         relaxedModel.export(f"relaxedModel.lp")
 
         # For every lam,t0, split (9) into two subproblems and solve each.
@@ -229,8 +222,8 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                             (q[lam] * defenderSocialUtility(sd,t0,defenders,_dCosts,_dPenalties))
                 if value < 0:
                     violatedConstraints = True
-                    if sd not in subsetS:
-                        subsetS.append(sd)
+                    if (sd,t0) not in subsetS:
+                        subsetS.append((sd,t0))
 
                 # Subproblem 2
                 # Fix each possible defender that coveres t0. For each of these, find
@@ -271,15 +264,14 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                                 (q[lam] * defenderSocialUtility(sd,t0,defenders,_dCosts,_dPenalties))
                     if value < 0:
                         violatedConstraints = True
-                        if sd not in subsetS:
-                            subsetS.append(sd)
+                        if (sd,t0) not in subsetS:
+                            subsetS.append((sd,t0))
 
         # Now that we have checked all the violated constraints, either return
         # the solution ( get the dual values) or recompute the optimal value of
         # the dual with additional constraints
         if not violatedConstraints:
-            print(relaxedModel.dual_values(dualConstraints))
-            return relaxedModel.solution.get_objective_value(), relaxedModel
+            return relaxedModel.solution.get_objective_value(), relaxedModel, relaxedModel.dual_values(dualConstraints)
 
 
 # ------------------------------------------------------------------------------
