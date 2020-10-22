@@ -119,7 +119,7 @@ def solveBPNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRew
     model.solve()
     return model.solution.get_objective_value(), model
 
-def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=50):
     """A game where defender assignments are not allowed to overlap, with as many
     dummy targets as defenders (represents defenders not having to be assigned).
     This problem is the dual of the primal above, and is solved using the ellipsoid
@@ -155,7 +155,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
     subsetS = random.choices(s, k=subsetCount)
 
     # Solve the dual using column generation
-    while True:
+    for _ in range(maxIterations):
         relaxedModel = Model('relaxedModel')
         g = relaxedModel.continuous_var_dict(keys=aTypes, lb=-100000, ub=100000, name="g") # unbounded
         a = relaxedModel.continuous_var_dict(keys=aKeys, lb=0, ub=100000, name="a") # No upper bound
@@ -272,6 +272,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
         # the dual with additional constraints
         if not violatedConstraints:
             return relaxedModel.solution.get_objective_value(), relaxedModel, relaxedModel.dual_values(dualConstraints)
+    return relaxedModel.solution.get_objective_value(), relaxedModel, relaxedModel.dual_values(dualConstraints)
 
 
 # ------------------------------------------------------------------------------
