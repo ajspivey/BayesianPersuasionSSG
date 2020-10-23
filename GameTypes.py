@@ -170,7 +170,6 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
             for sd,sa in subsetS for lam in aTypes])
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
-        print(relaxedModel.solution.get_objective_value())
         relaxedModel.export(f"relaxedModel.lp")
 
         # For every lam,t0, split (9) into two subproblems and solve each.

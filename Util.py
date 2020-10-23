@@ -167,14 +167,14 @@ def probabilityProtected(dStrats, targetNum):
     return protectionOdds
 
 # ------------------------------------------------------------------------------
-def createGraph(title, xLabel, yLabel, v1, v1Label, v2, v2Label, v3, v3Label, v4, v4Label, v5, v5Label, xStart=1):
+def createGraph(title, xLabel, yLabel, gameTypes, gameData, xStart=1):
     """Given a number of labels and values, creates a graph comparing performance"""
     g = plt.figure()
-    plt.plot(range(xStart, len(v5) + xStart), v5, 'y', label=f'{v5Label}')
-    plt.plot(range(xStart, len(v4) + xStart), v4, 'm', label=f'{v4Label}')
-    plt.plot(range(xStart, len(v3) + xStart), v3, 'r', label=f'{v3Label}')
-    plt.plot(range(xStart, len(v2) + xStart), v2, 'b', label=f'{v2Label}')
-    plt.plot(range(xStart, len(v1) + xStart), v1, 'g', label=f'{v1Label}')
+    for gameIndex in range(len(gameTypes)):
+        label = gameTypes[gameIndex][1]
+        color = gameTypes[gameIndex][2]
+        data = gameData[label]
+        plt.plot(range(xStart, len(data) + xStart), data, f"{color}", label=f'{label} {yLabel}')
     plt.title(f"{title}")
     plt.xlabel(f"{xLabel}")
     plt.ylabel(f"{yLabel}")
