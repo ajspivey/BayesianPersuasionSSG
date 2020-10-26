@@ -13,7 +13,7 @@ import random
 import copy
 
 # Internal Imports
-from constants import DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
+from constants import DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M,GAMEUTILITY,GAMEMODEL,GAMEEXTRAS
 from util import generateRandomDefenders, generateRandomAttackers, numberToBase, \
                 getPlacements, getOmegaKeys, defenderSocialUtility, utilityM, \
                 aUtility, getLambdaPlacements, utilityDI, utilityLamI, \
@@ -31,4 +31,4 @@ game = solveBPNONDDualEllipsoid
 # ==============================================================================
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(DEFENDERNUM, TARGETNUM)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(ATTACKERNUM, TARGETNUM)
-score, model = game(TARGETNUM, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+score, model, extras = game(TARGETNUM, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
