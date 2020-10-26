@@ -21,11 +21,14 @@ from util import generateRandomDefenders, generateRandomAttackers, numberToBase,
 from gameTypes import solveBPAllowOverlap, solveBPNoRequiredDefenderAssignment, \
                     solveBPNOOD, solveBPNOND, solveBaseline, solveBPNONDDualEllipsoid
 
-random.seed(0)
+# ==============================================================================
+# GAME SETTINGS
+# ==============================================================================
+game = solveBPNONDDualEllipsoid
 
 # ==============================================================================
-# FUNCTIONS
+# LP Definition & Constraints
 # ==============================================================================
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(DEFENDERNUM, TARGETNUM)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(ATTACKERNUM, TARGETNUM)
-score, model, dualValues = solveBPNONDDualEllipsoid(TARGETNUM, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+score, model = game(TARGETNUM, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
