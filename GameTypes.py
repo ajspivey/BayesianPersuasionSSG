@@ -119,6 +119,103 @@ def solveBPNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRew
     model.solve()
     return model.solution.get_objective_value(), model, None
 
+def solveSmallBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
+    """A game where defender assignments are not allowed to overlap, with as many
+    dummy targets as defenders (represents defenders not having to be assigned).
+    This problem is the dual of the primal above, and is solved using the ellipsoid
+    method."""
+    totalTime = getTime()
+    setupTime = getTime()
+    _dRewards = copy.deepcopy(dRewards)
+    _dPenalties = copy.deepcopy(dPenalties)
+    _dCosts = copy.deepcopy(dCosts)
+    _aRewards = copy.deepcopy(aRewards)
+    _aPenalties = copy.deepcopy(aPenalties)
+    for m in defenders:
+        for defenderCount in defenders:
+            _dRewards[m].append(0)
+            _dPenalties[m].append(0)
+            _dCosts[m].append(0)
+        for lam in aTypes:
+            _aRewards[lam].append(0)
+            _aPenalties[lam].append(0)
+    targetNumWithDummies = len(_dRewards[0])
+    targetRange = list(range(targetNumWithDummies))
+    # Get the placements that occur with no overlap
+    overlapPlacements = getPlacements(defenders, targetNumWithDummies)
+    placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
+    s = [(sd,sa) for sd in placements for sa in targetRange]
+    # Generate the keys
+    aKeys = [(t,tPrime,lam) for t in targetRange for tPrime in targetRange for lam in aTypes]
+    bKeys = [(t,tPrime,d) for t in targetRange for tPrime in targetRange for d in defenders]
+    # Get a random subset of the placements
+    subsetCount = int(len(placements) * 0.001)
+    if subsetCount == 0:
+        subsetCount = len(placements) // 4
+    subsetS = random.choices(s, k=subsetCount)
+    # Solve the dual using column generation
+    for _ in range(maxIterations):
+        print(f"ITERATION: {_}")
+        relaxedModel = Model('relaxedModel')
+        g = relaxedModel.continuous_var_dict(keys=aTypes, lb=-1000, ub=1000, name="g") # unbounded
+        a = relaxedModel.continuous_var_dict(keys=aKeys, lb=0, ub=1000, name="a") # No upper bound
+        b = relaxedModel.continuous_var_dict(keys=bKeys, lb=0, ub=1000, name="b") # No upper bound
+        objectiveFunction = sum([g[lam] for lam in aTypes])
+        dualConstraints = relaxedModel.add_constraints([                            \
+            sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[sa,tPrime,lam] for tPrime in targetRange]) + \
+            sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,d]  for d in defenders for tPrime in targetRange]) + \
+            g[lam] \
+            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
+            for sd,sa in subsetS for lam in aTypes])
+        relaxedModel.minimize(objectiveFunction)
+        relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
+        relaxedModel.export(f"relaxedModel.lp") # Remove for time savings
+
+        constraintTruth = [                            \
+            sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + \
+            sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) + \
+            float(g[lam]) \
+            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
+            for sd,sa in subsetS for lam in aTypes]
+        constraintVals = [                            \
+            sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + \
+            sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) \
+            - q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
+            for sd,sa in subsetS for lam in aTypes]
+
+        print(subsetS)
+        violated = False
+        for constraintIndex in range(len(dualConstraints)):
+            if constraintTruth[constraintIndex] == False and constraintVals[constraintIndex] < 990:
+                violated = True
+                print(f"constraint {constraintIndex + 1} violated")
+                print(f"constraint has value {constraintVals[constraintIndex]}")
+        if violated:
+            print("alpha")
+            for k,v in a.items():
+                if float(v) != 0:
+                    print(k, float(v))
+            for k,v in b.items():
+                if float(v) != 0:
+                    print(k, float(v))
+            for k,v in g.items():
+                if float(v) != 0:
+                    print(k, float(v))
+            break
+        alreadyIn = True
+        while alreadyIn:
+            randomSubset = random.choices(s, k=1)[0]
+            if randomSubset not in subsetS:
+                alreadyIn = False
+        subsetS.append(randomSubset)
+
+
+        # See if any constraints are violated
+        # Add in a new constraint
+
+    return relaxedModel.solution.get_objective_value(), relaxedModel, relaxedModel.dual_values(dualConstraints)
+
+
 def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
     """A game where defender assignments are not allowed to overlap, with as many
     dummy targets as defenders (represents defenders not having to be assigned).
