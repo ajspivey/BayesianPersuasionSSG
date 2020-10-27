@@ -19,12 +19,15 @@ from util import generateRandomDefenders, generateRandomAttackers, numberToBase,
                 aUtility, getLambdaPlacements, utilityDI, utilityLamI, \
                 probabilityProtected, createGraph
 from gameTypes import solveBPAllowOverlap, solveBPNoRequiredDefenderAssignment, \
-                    solveBPNOOD, solveBPNOND, solveBaseline, solveBPNONDDualEllipsoid
+                    solveBPNOOD, solveBPNOND, solveBaseline, solveBPNONDDualEllipsoid, \
+                    solveSmallBPNONDDualEllipsoid
+
+random.seed(3)
 
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-game = solveBPNONDDualEllipsoid
+game = solveSmallBPNONDDualEllipsoid
 
 # ==============================================================================
 # LP Definition & Constraints
