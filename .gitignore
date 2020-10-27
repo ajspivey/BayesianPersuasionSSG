@@ -2,3 +2,4 @@
 *.png
 sandbox.py
 __pycache__*
+*.log
