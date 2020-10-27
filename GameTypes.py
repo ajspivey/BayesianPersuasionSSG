@@ -55,7 +55,7 @@ def solveBPNoRequiredDefenderAssignment(targetNum, defenders, dRewards, dPenalti
     omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
     model = Model('BayesianPersuasionSolverWithoutRequiredAssignment')
     w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
-    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
+    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dRewards, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
 
     model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
     model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
@@ -82,7 +82,7 @@ def solveBPNOOD(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRew
     omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
     model = Model('BayesianPersuasionSolverWithOverlap')
     w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
-    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
+    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dRewards, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
     model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
     model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
                            sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
@@ -109,7 +109,7 @@ def solveBPNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRew
     omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
     model = Model('BayesianPersuasionSolverWithOverlap')
     w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
-    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
+    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dRewards, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
     model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
     model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
                            sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
@@ -165,7 +165,7 @@ def solveSmallBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dC
             sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[sa,tPrime,lam] for tPrime in targetRange]) + \
             sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,d]  for d in defenders for tPrime in targetRange]) + \
             g[lam] \
-            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
+            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
             for sd,sa in subsetS for lam in aTypes])
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
@@ -175,12 +175,12 @@ def solveSmallBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dC
             sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + \
             sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) + \
             float(g[lam]) \
-            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
+            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
             for sd,sa in subsetS for lam in aTypes]
         constraintVals = [                            \
             sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + \
             sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) \
-            - q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
+            - q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
             for sd,sa in subsetS for lam in aTypes]
 
         print(subsetS)
@@ -279,7 +279,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
             sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[sa,tPrime,lam] for tPrime in targetRange]) + \
             sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,d]  for d in defenders for tPrime in targetRange]) + \
             g[lam] \
-            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
+            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
             for sd,sa in subsetS for lam in aTypes])
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
@@ -289,7 +289,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                 sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + \
                 sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) + \
                 float(g[lam]) \
-                >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
+                >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
                 for sd,sa in subsetS for lam in aTypes])
         )
         print("(9) value")
@@ -297,7 +297,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
             ([                            \
                 sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + \
                 sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) + \
-                - q[lam] * defenderSocialUtility(sd,sa,defenders,_dCosts,_dPenalties)  \
+                - q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
                 for sd,sa in subsetS for lam in aTypes])
         )
         print("a")
@@ -369,7 +369,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                 # the subset of solutions.
                 value = sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange]) + \
                             sum([(utilityM(tPrime,sd,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d]) for d in defenders for tPrime in targetRange]) - \
-                            (q[lam] * defenderSocialUtility(sd,t0,defenders,_dCosts,_dPenalties))
+                            (q[lam] * defenderSocialUtility(sd,t0,defenders,_dRewards,_dCosts,_dPenalties))
                 # print(f"value 1: {value}")
                 if value < 0:
                     if (sd,t0) not in subsetS:
@@ -420,7 +420,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                     # the subset of solutions.
                     value = sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange]) + \
                                 sum([(utilityM(tPrime,sd,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d]) for d in defenders for tPrime in targetRange]) - \
-                                (q[lam] * defenderSocialUtility(sd,t0,defenders,_dCosts,_dPenalties))
+                                (q[lam] * defenderSocialUtility(sd,t0,defenders,_dRewards,_dCosts,_dPenalties))
                     # print(f"value 2: {value}")
                     if value < 0:
                         if (sd,t0) not in subsetS:

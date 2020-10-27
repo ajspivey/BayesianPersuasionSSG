@@ -89,20 +89,20 @@ def getOmegaKeys(aTypes, placements, attackerActions):
     return list(set(omegaKeys))
 
 # ------------------------------------------------------------------------------
-def defenderSocialUtility(s,a,defenders, dCosts, dPenalties):
+def defenderSocialUtility(s,a,defenders, dRewards, dCosts, dPenalties):
     """Calculates the defender's social utility (Sum of the utility of all defenders)
     given the costs and penalties for the defenders as well as the placements and
     attacked target"""
     utility = 0
     defended = False
-    for defenderAssignment in s:
-        if defenderAssignment == a:
-            defended = True
     for defender in defenders:
         targetIndex = s[defender]
         utility += dCosts[defender][targetIndex]
-        if defended == False:
-            utility += dPenalties[defender][a]
+        if targetIndex == a:
+            defended = True
+            utility += dRewards[defender][targetIndex]
+    if defended == False:
+        utility += sum([dPenalties[defender][a] for defender in defenders])
     return utility
 
 # ------------------------------------------------------------------------------
@@ -116,6 +116,7 @@ def utilityM(d,dm,a,m, dRewards, dPenalties, dCosts):
             defended = True
     if d == a:
         defended = True
+        utility += dRewards[m][d]
     if defended == False:
         utility += dPenalties[m][a]
     return utility
