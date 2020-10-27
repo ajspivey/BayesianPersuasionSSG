@@ -124,14 +124,10 @@ def utilityM(d,dm,a,m, dRewards, dPenalties, dCosts):
 def aUtility(s,a,lam, aPenalties, aRewards):
     """Calculates the utility for an attacker lambda when the defenders follow
     plaement s and the attacker attacks target a"""
-    utility = aRewards[lam][a]
-    defended = False
-    for targetIndex in s:
-        if targetIndex == a:
-            defended = True
-    if defended == True:
-        utility = aPenalties[lam][a]
-    return utility
+    if a in s:
+        return aPenalties[lam][a]
+    else:
+        return aRewards[lam][a]
 
 # ------------------------------------------------------------------------------
 def getLambdaPlacements():
