@@ -3,9 +3,10 @@ from itertools import permutations
 from functools import reduce
 from operator import mul
 from numpy import argmax
+import numpy as np
+from scipy import optimize
 from time import time as getTime
 import matplotlib.pyplot as plt
-import networkx as nx
 import random
 import copy
 
@@ -119,7 +120,7 @@ def solveBPNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRew
     model.solve()
     return model.solution.get_objective_value(), model, None
 
-def solveSmallBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
+def solveSmallBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=80):
     """A game where defender assignments are not allowed to overlap, with as many
     dummy targets as defenders (represents defenders not having to be assigned).
     This problem is the dual of the primal above, and is solved using the ellipsoid
@@ -171,47 +172,105 @@ def solveSmallBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dC
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
         relaxedModel.export(f"relaxedModel.lp") # Remove for time savings
 
-        constraintTruth = [                            \
-            sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + \
-            sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) + \
-            float(g[lam]) \
-            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
+        constraintValues = [                            \
+            (
+            sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) + float(g[lam]),\
+            q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)\
+            ) \
             for sd,sa in subsetS for lam in aTypes]
-        constraintVals = [                            \
-            sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + \
-            sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) \
-            - q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
-            for sd,sa in subsetS for lam in aTypes]
+        epsilon = -1e-3
 
-        print(subsetS)
         violated = False
         for constraintIndex in range(len(dualConstraints)):
-            if constraintTruth[constraintIndex] == False and constraintVals[constraintIndex] < 990:
+            lhs, rhs = constraintValues[constraintIndex]
+            diff = lhs - rhs
+            if diff < epsilon:
                 violated = True
                 print(f"constraint {constraintIndex + 1} violated")
-                print(f"constraint has value {constraintVals[constraintIndex]}")
+                print(f"constraint has lhs: {lhs}")
+                print(f"constraint has rhs: {rhs}")
+                print(f"constraint has diff: {diff}")
         if violated:
             print("alpha")
             for k,v in a.items():
                 if float(v) != 0:
                     print(k, float(v))
+            print("beta")
             for k,v in b.items():
                 if float(v) != 0:
                     print(k, float(v))
+            print("gamma")
             for k,v in g.items():
                 if float(v) != 0:
                     print(k, float(v))
-            break
+            alreadyIn = True
+            while alreadyIn:
+                randomSubset = random.choices(s, k=1)[0]
+                if randomSubset not in subsetS:
+                    alreadyIn = False
+            subsetS.append(randomSubset)
+        else:
+            print(f"\n\n Model value: {relaxedModel.solution.get_objective_value()}")
+            return relaxedModel.solution.get_objective_value(), relaxedModel, relaxedModel.dual_values(dualConstraints)
+
+
+def solveSmallBPNONDDualEllipsoid2(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
+    """A game where defender assignments are not allowed to overlap, with as many
+    dummy targets as defenders (represents defenders not having to be assigned).
+    This problem is the dual of the primal above, and is solved using the ellipsoid
+    method."""
+    totalTime = getTime()
+    setupTime = getTime()
+    _dRewards = copy.deepcopy(dRewards)
+    _dPenalties = copy.deepcopy(dPenalties)
+    _dCosts = copy.deepcopy(dCosts)
+    _aRewards = copy.deepcopy(aRewards)
+    _aPenalties = copy.deepcopy(aPenalties)
+    for m in defenders:
+        for defenderCount in defenders:
+            _dRewards[m].append(0)
+            _dPenalties[m].append(0)
+            _dCosts[m].append(0)
+        for lam in aTypes:
+            _aRewards[lam].append(0)
+            _aPenalties[lam].append(0)
+    targetNumWithDummies = len(_dRewards[0])
+    targetRange = list(range(targetNumWithDummies))
+    # Get the placements that occur with no overlap
+    overlapPlacements = getPlacements(defenders, targetNumWithDummies)
+    placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
+    s = [(sd,sa) for sd in placements for sa in targetRange]
+    # Generate the keys
+    aKeys = [(t,tPrime,lam) for t in targetRange for tPrime in targetRange for lam in aTypes]
+    bKeys = [(t,tPrime,d) for t in targetRange for tPrime in targetRange for d in defenders]
+    # Get a random subset of the placements
+    subsetCount = int(len(placements) * 0.001)
+    if subsetCount == 0:
+        subsetCount = len(placements) // 4
+    subsetS = random.choices(s, k=subsetCount)
+    # Solve the dual using column generation
+    for _ in range(maxIterations):
+        print(f"ITERATION: {_}")
+        relaxedModel = Model('relaxedModel')
+        g = relaxedModel.continuous_var_dict(keys=aTypes, lb=-1000, ub=1000, name="g") # unbounded
+        a = relaxedModel.continuous_var_dict(keys=aKeys, lb=0, ub=1000, name="a") # No upper bound
+        b = relaxedModel.continuous_var_dict(keys=bKeys, lb=0, ub=1000, name="b") # No upper bound
+        objectiveFunction = sum([g[lam] for lam in aTypes])
+        dualConstraints = relaxedModel.add_constraints([                            \
+            sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[sa,tPrime,lam] for tPrime in targetRange]) + \
+            sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,d]  for d in defenders for tPrime in targetRange]) + \
+            g[lam] \
+            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
+            for sd,sa in subsetS for lam in aTypes])
+        relaxedModel.minimize(objectiveFunction)
+        relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
+        print(f"Solution value: {relaxedModel.solution.get_objective_value()}")
         alreadyIn = True
         while alreadyIn:
             randomSubset = random.choices(s, k=1)[0]
             if randomSubset not in subsetS:
                 alreadyIn = False
         subsetS.append(randomSubset)
-
-
-        # See if any constraints are violated
-        # Add in a new constraint
 
     return relaxedModel.solution.get_objective_value(), relaxedModel, relaxedModel.dual_values(dualConstraints)
 
@@ -221,11 +280,8 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
     dummy targets as defenders (represents defenders not having to be assigned).
     This problem is the dual of the primal above, and is solved using the ellipsoid
     method."""
-    # potentially iterate over attacker solutions and defender placements together
-    # if the runtime is slow (get a subset of suggestion schemes)
     # Add extra dummy targets
-    print("STARTING")
-    print(f"A random number: {random.randint(1,100)}")
+    epsilon = -1e-3
     totalTime = getTime()
     setupTime = getTime()
     _dRewards = copy.deepcopy(dRewards)
@@ -244,7 +300,7 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
     targetNumWithDummies = len(_dRewards[0])
     targetRange = list(range(targetNumWithDummies))
 
-    # Get the placements that occur with no overlap
+    # Get the suggestions that occur with no overlap
     overlapPlacements = getPlacements(defenders, targetNumWithDummies)
     placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
     s = [(sd,sa) for sd in placements for sa in targetRange]
@@ -256,8 +312,6 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
     if subsetCount == 0:
         subsetCount = len(placements) // 4
     subsetS = random.choices(s, k=subsetCount)
-    print(f"SubsetCount: {subsetCount}")
-    print(subsetS)
     setupTime = getTime() - setupTime
 
     # Solve the dual using column generation
@@ -283,44 +337,15 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
             for sd,sa in subsetS for lam in aTypes])
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
-        print("Constraints violated?")
-        print(
-            ([                            \
-                sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + \
-                sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) + \
-                float(g[lam]) \
-                >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
-                for sd,sa in subsetS for lam in aTypes])
-        )
-        print("(9) value")
-        print(
-            ([                            \
-                sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * float(a[sa,tPrime,lam]) for tPrime in targetRange]) + \
-                sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d])  for d in defenders for tPrime in targetRange]) + \
-                - q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
-                for sd,sa in subsetS for lam in aTypes])
-        )
-        print("a")
-        for k, v in a.items():
-            print(k, float(v))
-        print("b")
-        for k, v in b.items():
-            print(k, float(v))
-        print("g")
-        for k, v in g.items():
-            print(k, float(v))
-        print()
         print(relaxedModel.get_solve_status())
         print(f"Utility on iteration {_} = {relaxedModel.solution.get_objective_value()}")
-        # print(f"Constraint count: {len(dualConstraints)}")
-        # print(f"subsetS on iteration {_}: {subsetS}")
-        print(subsetS)
-        relaxedModel.export(f"relaxedModel.lp") # Remove for time savings
+        print(f"subsetS on iteration {_} = {subsetS}")
         modelingTime += getTime() - modelingStartTime
 
         # For every lam,t0, split (9) into two subproblems and solve each.
         totalSubProblemTime = getTime()
         violatedConstraints = False
+        signalsToBeAdded = []
         for lam in aTypes:
             for t0 in targetRange:
                 # Subproblem 1
@@ -329,111 +354,97 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                 # graph, adding extra defenders as necessary for a maximum bipartite
                 # matching problem
                 subproblem1SetupTimeStart = getTime()
-                edges = {}
                 # Build the weights
+                weightMatrix = np.zeros(shape=(targetNumWithDummies,targetNumWithDummies))
                 for d in defenders:
-                    edges[f"d_{d}"] = {}
                     for t in targetRange:
                         if t != t0:
                             weightValue = -q[lam]*_dCosts[d][t] \
                                             + (_dRewards[d][t0] + _dCosts[d][t0] - _dPenalties[d][t0] - _dCosts[d][t]) * float(b[t, t0, d]) \
                                             + sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[t,tPrime,d]) for tPrime in targetRange if tPrime != t0]) \
                                             + (_aPenalties[lam][t] - _aRewards[lam][t0]) * float(a[t0, t, lam])
-                            edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
+                            weightMatrix[d][t] = weightValue
                         else:
-                            weightValue = 10000
-                            edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
+                            weightValue = 100000
+                            weightMatrix[d][t] = weightValue
                 for d in range(len(defenders), targetNumWithDummies):
-                    edges[f"ed_{d}"] = {}
                     for t in targetRange:
                         weightValue = (_aRewards[lam][t] - _aRewards[lam][t0]) * float(a[t0,t,lam])
-                        edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
+                        weightMatrix[d][t] = weightValue
 
                 subproblem1SetupTime += getTime() - subproblem1SetupTimeStart
-                # Build the graph
-                graphMatchingTimeStart = getTime()
-                G = nx.from_dict_of_dicts(edges)
                 # Solve the problem
-                matchings = nx.algorithms.bipartite.minimum_weight_full_matching(G)
-
-                # Convert the solution back into our setting
-                sd = [0] * len(defenders)
-                for k,v in matchings.items():
-                    if k.startswith("d_"):
-                        defender = int(k.split("_")[1])
-                        target = int(v.split("_")[1])
-                        sd[defender] = target
+                graphMatchingTimeStart = getTime()
+                defenderIndexes, placementIndexes = optimize.linear_sum_assignment(weightMatrix)
+                newPlacement = [defenderPlacement for defenderPlacement in placementIndexes[:len(defenders)]]
+                newPlacementCost = weightMatrix[defenderIndexes, placementIndexes].sum()
                 graphMatchingTime += getTime() - graphMatchingTimeStart
 
                 # Check the value of this s using (9) -- if negative, add s to
                 # the subset of solutions.
-                value = sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange]) + \
-                            sum([(utilityM(tPrime,sd,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d]) for d in defenders for tPrime in targetRange]) - \
-                            (q[lam] * defenderSocialUtility(sd,t0,defenders,_dRewards,_dCosts,_dPenalties))
-                # print(f"value 1: {value}")
-                if value < 0:
-                    if (sd,t0) not in subsetS:
-                        violatedConstraints = True # TODO: Switch this back
-                        subsetS.append((sd,t0))
-                    #     print(f"1 adding {(sd,t0)}")
-                    # else:
-                    #     print("ALREADY FOUND 1")
-                    #     print((sd,t0))
+                value = sum([(aUtility(newPlacement,tPrime,lam,_aPenalties,_aRewards) - aUtility(newPlacement,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange]) + \
+                            sum([(utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[newPlacement[d],tPrime,d]) for d in defenders for tPrime in targetRange]) - \
+                            (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties)) + float(g[lam])
+
+                existsFromPreviousIteration = False
+                if value < epsilon:
+                    violatedConstraints = True
+                    signal = (newPlacement,t0)
+                    if signal not in subsetS and signal not in signalsToBeAdded:
+                        print(f"P1: adding signal: {signal}")
+                        signalsToBeAdded.append(signal)
+                    elif signal not in signalsToBeAdded:
+                        print(f"P2: {signal} exists from previous iteration")
+                        existsFromPreviousIteration = True
 
                 # Subproblem 2
                 # Fix each possible defender that coveres t0. For each of these, find
                 # the best matching
                 for d0 in defenders:
+                    weightMatrix = np.zeros(shape=(targetNumWithDummies,targetNumWithDummies))
                     subproblem2SetupTimeStart = getTime()
                     edges = {}
                     # Set weights for the defenders
                     for d in defenders:
                         if d != d0:
-                            edges[f"d_{d}"] = {}
                             for t in targetRange:
                                 weightValue = (_aPenalties[lam][t] - _aPenalties[lam][t0]) * float(a[t0,t,lam]) + \
                                                 sum([(_dCosts[d][tPrime] - _dCosts[d][t] )* float(b[t,tPrime,d]) for tPrime in targetRange])  - \
                                                 q[lam] * _dCosts[d][t]
-                                edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
+                                weightMatrix[d][t] = weightValue
                     # Add buffer defenders to reach the target count
                     for d in range(len(defenders), targetNumWithDummies):
-                        edges[f"ed_{d}"] = {}
                         for t in targetRange:
                             weightValue = (_aRewards[lam][t] - _aPenalties[lam][t0]) * float(a[t0,t,lam])
-                            edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
+                            weightMatrix[d][t] = weightValue
                     subproblem2SetupTime += getTime() - subproblem2SetupTimeStart
-                    # Build the graph
-                    graphMatchingTimeStart = getTime()
-                    G = nx.from_dict_of_dicts(edges)
                     # Solve the problem
-                    matchings = nx.algorithms.bipartite.minimum_weight_full_matching(G)
-
-                    # Convert the solution back into our setting
-                    sd = [0] * len(defenders)
-                    for k,v in matchings.items():
-                        if k.startswith("d_"):
-                            defender = int(k.split("_")[1])
-                            target = int(v.split("_")[1])
-                            sd[defender] = target
+                    graphMatchingTimeStart = getTime()
+                    defenderIndexes, placementIndexes = optimize.linear_sum_assignment(weightMatrix)
+                    newPlacement = [defenderPlacement for defenderPlacement in placementIndexes[:len(defenders)]]
+                    newPlacementCost = weightMatrix[defenderIndexes, placementIndexes].sum()
                     graphMatchingTime += getTime() - graphMatchingTimeStart
+
                     # Check the value of this s using (9) -- if negative, add s to
                     # the subset of solutions.
-                    value = sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange]) + \
-                                sum([(utilityM(tPrime,sd,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[sd[d],tPrime,d]) for d in defenders for tPrime in targetRange]) - \
-                                (q[lam] * defenderSocialUtility(sd,t0,defenders,_dRewards,_dCosts,_dPenalties))
-                    # print(f"value 2: {value}")
-                    if value < 0:
-                        if (sd,t0) not in subsetS:
-                            violatedConstraints = True #TODO: Switch this back
-                            # print(f"2 adding {(sd,t0)}")
-                            subsetS.append((sd,t0))
-                        # else:
-                        #     print("ALREADY FOUND 2")
-                        #     print((sd,t0))
+                    value = sum([(aUtility(newPlacement,tPrime,lam,_aPenalties,_aRewards) - aUtility(newPlacement,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange]) + \
+                                sum([(utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[newPlacement[d],tPrime,d]) for d in defenders for tPrime in targetRange]) - \
+                                (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties))
+                    if value < epsilon:
+                        violatedConstraints = True
+                        signal = (newPlacement,t0)
+                        if signal not in subsetS and signal not in signalsToBeAdded:
+                            print(f"P2: adding signal: {signal}")
+                            signalsToBeAdded.append(signal)
+                        elif signal not in signalsToBeAdded:
+                            print(f"P2: {signal} exists from previous iteration")
+                            existsFromPreviousIteration = True
 
         # Now that we have checked all the violated constraints, either return
         # the solution ( get the dual values) or recompute the optimal value of
         # the dual with additional constraints
+        for signal in signalsToBeAdded:
+            subsetS.append(signal)
         if not violatedConstraints:
             print("NO VIOLATED CONSTRAINTS")
             totalSubProblemTime = getTime() - totalSubProblemTime
