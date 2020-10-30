@@ -28,22 +28,17 @@ from gameTypes import solveBPAllowOverlap, solveBPNoRequiredDefenderAssignment, 
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-game = solveBPNONDDualEllipsoid
-game2 = solveBPAllowOverlap
+games = [(solveBaseline, "baseline")]
 
 # ==============================================================================
 # LP Definition & Constraints
 # ==============================================================================
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(DEFENDERNUM, TARGETNUM)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(ATTACKERNUM, TARGETNUM)
-print(f"Program 1 Starting!")
-game1Start = getTime()
-score1, model, extras = game(TARGETNUM, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
-game1Time = getTime()-game1Start
-# print(f"Program 2 Starting!")
-# game2Start = getTime()
-# score2, model, extras = game2(TARGETNUM, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
-# game2Time = getTime() - game2Start
 
-print(f"Game 1 time: {game1Time}, game 1 utility: {score1}")
-# print(f"Game 2 time: {game2Time}, game 2 utility: {score2}")
+for game, name in games:
+    start = getTime()
+    score, model, extras = game(TARGETNUM, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+    time = getTime() - start
+    print(f"time for {name}: {time}")
+    print(f"Score for {name}: {score}")
