@@ -19,19 +19,31 @@ from util import generateRandomDefenders, generateRandomAttackers, numberToBase,
                 aUtility, getLambdaPlacements, utilityDI, utilityLamI, \
                 probabilityProtected, createGraph
 from gameTypes import solveBPAllowOverlap, solveBPNoRequiredDefenderAssignment, \
-                    solveBPNOOD, solveBPNOND, solveBaseline, solveBPNONDDualEllipsoid, \
-                    solveSmallBPNONDDualEllipsoid
+                    solveBPNOOD, solveBPNOND, solveBaseline, solveBPNONDDualEllipsoid
 
-random.seed(3)
+# random.seed(7)
+# random.seed(18)
+# random.seed(20)
 
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-game = solveSmallBPNONDDualEllipsoid
+game = solveBPNONDDualEllipsoid
+game2 = solveBPAllowOverlap
 
 # ==============================================================================
 # LP Definition & Constraints
 # ==============================================================================
 defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(DEFENDERNUM, TARGETNUM)
 aTypes, aRewards, aPenalties, q = generateRandomAttackers(ATTACKERNUM, TARGETNUM)
-score, model, extras = game(TARGETNUM, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+print(f"Program 1 Starting!")
+game1Start = getTime()
+score1, model, extras = game(TARGETNUM, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+game1Time = getTime()-game1Start
+# print(f"Program 2 Starting!")
+# game2Start = getTime()
+# score2, model, extras = game2(TARGETNUM, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)
+# game2Time = getTime() - game2Start
+
+print(f"Game 1 time: {game1Time}, game 1 utility: {score1}")
+# print(f"Game 2 time: {game2Time}, game 2 utility: {score2}")
