@@ -24,20 +24,20 @@ from gameTypes import solveBPAllowOverlap, solveBPNoRequiredDefenderAssignment, 
 # ==============================================================================
 # FUNCTIONS
 # ==============================================================================
-def iterateTargets(targetNum, avgCount, gameTypeList, overBudgets):
+def iterateTargets(iterable, avgCount, gameTypeList, overBudgets):
     utilities = [0] * len(gameTypeList)
     times = [0] * len(gameTypeList)
     for _ in range(avgCount):
-        print(f"set {_} of {avgCount} for {targetNum}")
+        print(f"set {_} of {avgCount} for {iterable}")
         # Generate a new game
-        defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(DEFENDERNUM, targetNum)
-        aTypes, aRewards, aPenalties, q = generateRandomAttackers(ATTACKERNUM, targetNum)
+        defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(DEFENDERNUM, iterable)
+        aTypes, aRewards, aPenalties, q = generateRandomAttackers(ATTACKERNUM, iterable)
 
         gameIndex = 0
         for gameType, overBudget in zip(gameTypeList,overBudgets):
             if not overBudgets[gameIndex]:
                 start = getTime()
-                utilities[gameIndex] += gameType(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)[GAMEUTILITY]
+                utilities[gameIndex] += gameType(iterable, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q)[GAMEUTILITY]
                 times[gameIndex] += getTime()-start
             else:
                 utilities[gameIndex] = None
@@ -50,13 +50,13 @@ def iterateTargets(targetNum, avgCount, gameTypeList, overBudgets):
 
     return utilities,times
 
-def iterateDefenders(defenderNum, avgCount, gameTypeList, overBudgets):
+def iterateDefenders(iterable, avgCount, gameTypeList, overBudgets):
     utilities = [0] * len(gameTypeList)
     times = [0] * len(gameTypeList)
     for _ in range(avgCount):
-        print(f"set {_} of {avgCount} for {defenderNum}")
+        print(f"set {_} of {avgCount} for {iterable}")
         # Generate a new game
-        defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(defenderNum, TARGETNUM)
+        defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(iterable, TARGETNUM)
         aTypes, aRewards, aPenalties, q = generateRandomAttackers(ATTACKERNUM, TARGETNUM)
 
         gameIndex = 0
@@ -76,14 +76,14 @@ def iterateDefenders(defenderNum, avgCount, gameTypeList, overBudgets):
 
     return utilities,times
 
-def iterateAttackers(attackerNum, avgCount, gameTypeList, overBudgets):
+def iterateAttackers(iterable, avgCount, gameTypeList, overBudgets):
     utilities = [0] * len(gameTypeList)
     times = [0] * len(gameTypeList)
     for _ in range(avgCount):
-        print(f"set {_} of {avgCount} for {attackerNum}")
+        print(f"set {_} of {avgCount} for {iterable}")
         # Generate a new game
         defenders, dRewards, dPenalties, dCosts = generateRandomDefenders(DEFENDERNUM, TARGETNUM)
-        aTypes, aRewards, aPenalties, q = generateRandomAttackers(attackerNum, TARGETNUM)
+        aTypes, aRewards, aPenalties, q = generateRandomAttackers(iterable, TARGETNUM)
 
         gameIndex = 0
         for gameType, overBudget in zip(gameTypeList,overBudgets):
@@ -102,6 +102,27 @@ def iterateAttackers(attackerNum, avgCount, gameTypeList, overBudgets):
 
     return utilities,times
 
+def generateGraph(gameTypeList, iterationFunction, iterableLabel):
+    gameUtilities = {}
+    gameTimes = {}
+    for gameType in gameTypeList:
+        gameUtilities[gameType[1]] = []
+        gameTimes[gameType[1]] = []
+    overBudgets = [False] * len(gameTypeList)
+    for _ in range(minIterable, maxIterable):
+        print(f"Iteration {_} of {maxIterable} for targetCount")
+        utilities, times = iterationFunction(iterable=_, avgCount=AVGCOUNT, gameTypeList=[gameType[0] for gameType in gameTypeList], overBudgets=overBudgets)
+        for gameIndex in range(len(overBudgets)):
+            if times[gameIndex] is not None and times[gameIndex] > timeBudget:
+                overBudgets[gameIndex] = True
+            gameUtilities[gameTypeList[gameIndex][1]].append(utilities[gameIndex])
+            gameTimes[gameTypeList[gameIndex][1]].append(times[gameIndex])
+    print(gameUtilities)
+    print(gameTimes)
+    uGraph = createGraph(f"Average Utilities ({iterableLabel})", f"Number of {iterableLabel}", "Utility", gameTypeList, gameUtilities, xStart=minIterable)
+    tGraph = createGraph(f"Average Runtimes ({iterableLabel})", f"Number of {iterableLabel}", "Runtime", gameTypeList, gameTimes, xStart=minIterable)
+    plt.show()
+
 
 # ==============================================================================
 # GAME SETTINGS
@@ -109,70 +130,13 @@ def iterateAttackers(attackerNum, avgCount, gameTypeList, overBudgets):
 timeBudget = 100 # 30 minutes
 utilities = []
 minIterable = 2
-maxIterable = 9
+maxIterable = 6
 
 # ==============================================================================
 # LP Definition & Constraints
 # ==============================================================================
 gameTypeList = [(solveBaseline,"Baseline", "y"), (solveBPAllowOverlap,"Allow Overlap", "r"), (solveBPNONDDualEllipsoid,"Dual w/ Ellipsoid", "g")]
-# gameTypeList = [(solveBPNONDDualEllipsoid,"Dual w/ Ellipsoid", "g")]
 # Iterate over the targets
-gameUtilities = {}
-gameTimes = {}
-for gameType in gameTypeList:
-    gameUtilities[gameType[1]] = []
-    gameTimes[gameType[1]] = []
-overBudgets = [False] * len(gameTypeList)
-for _ in range(minIterable, maxIterable):
-    print(f"Iteration {_} of {maxIterable} for targetCount")
-    utilities, times = iterateTargets(targetNum=_, avgCount=AVGCOUNT, gameTypeList=[gameType[0] for gameType in gameTypeList], overBudgets=overBudgets)
-    for gameIndex in range(len(overBudgets)):
-        if times[gameIndex] is not None and times[gameIndex] > timeBudget:
-            overBudgets[gameIndex] = True
-        gameUtilities[gameTypeList[gameIndex][1]].append(utilities[gameIndex])
-        gameTimes[gameTypeList[gameIndex][1]].append(times[gameIndex])
-print(gameUtilities)
-print(gameTimes)
-uGraph = createGraph("Average Utilities (targets)", "Number of Targets", "Utility", gameTypeList, gameUtilities, xStart=minIterable)
-tGraph = createGraph("Average Runtimes (targets)", "Number of Targets", "Runtime", gameTypeList, gameTimes, xStart=minIterable)
-# Iterate over the defenders
-# gameUtilities = {}
-# gameTimes = {}
-# for gameType in gameTypeList:
-#     gameUtilities[gameType[1]] = []
-#     gameTimes[gameType[1]] = []
-# overBudgets = [False] * len(gameTypeList)
-# for _ in range(minIterable, maxIterable):
-#     print(f"Iteration {_} of {maxIterable} for targetCount")
-#     # utilities, times = iterateTargets(targetNum=_, avgCount=AVGCOUNT, gameTypeList=[gameType[0] for gameType in gameTypeList], overBudgets=overBudgets)
-#     utilities, times = iterateDefenders(defenderNum=_, avgCount=AVGCOUNT, gameTypeList=[gameType[0] for gameType in gameTypeList], overBudgets=overBudgets)
-#     for gameIndex in range(len(overBudgets)):
-#         if times[gameIndex] is not None and times[gameIndex] > timeBudget:
-#             overBudgets[gameIndex] = True
-#         gameUtilities[gameTypeList[gameIndex][1]].append(utilities[gameIndex])
-#         gameTimes[gameTypeList[gameIndex][1]].append(times[gameIndex])
-# print(gameUtilities)
-# print(gameTimes)
-# uGraph = createGraph("Average Utilities (defenders)", "Number of Defenders", "Utility", gameTypeList, gameUtilities, xStart=minIterable)
-# tGraph = createGraph("Average Runtimes (defenders)", "Number of Defenders", "Runtime", gameTypeList, gameTimes, xStart=minIterable)
-# Iterate over the attackers
-gameUtilities = {}
-gameTimes = {}
-for gameType in gameTypeList:
-    gameUtilities[gameType[1]] = []
-    gameTimes[gameType[1]] = []
-overBudgets = [False] * len(gameTypeList)
-for _ in range(minIterable, maxIterable):
-    print(f"Iteration {_} of {maxIterable} for targetCount")
-    utilities, times = iterateAttackers(attackerNum=_, avgCount=AVGCOUNT, gameTypeList=[gameType[0] for gameType in gameTypeList], overBudgets=overBudgets)
-    for gameIndex in range(len(overBudgets)):
-        if times[gameIndex] is not None and times[gameIndex] > timeBudget:
-            overBudgets[gameIndex] = True
-        gameUtilities[gameTypeList[gameIndex][1]].append(utilities[gameIndex])
-        gameTimes[gameTypeList[gameIndex][1]].append(times[gameIndex])
-print(gameUtilities)
-print(gameTimes)
-uGraph = createGraph("Average Utilities (attackers)", "Number of Targets", "Utility", gameTypeList, gameUtilities, xStart=minIterable)
-tGraph = createGraph("Average Runtimes (attackers)", "Number of Targets", "Runtime", gameTypeList, gameTimes, xStart=minIterable)
-
-plt.show()
+# generateGraph(gameTypeList, iterateTargets, "Targets")
+generateGraph(gameTypeList, iterateDefenders, "Defenders")
+# generateGraph(gameTypeList, iterateAttackers, "Attackers")
