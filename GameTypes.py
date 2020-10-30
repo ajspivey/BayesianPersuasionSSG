@@ -4,7 +4,6 @@ from functools import reduce
 from operator import mul
 from numpy import argmax
 import numpy as np
-from scipy import optimize
 import networkx as nx
 from time import time as getTime
 import matplotlib.pyplot as plt
@@ -131,7 +130,7 @@ def solveBPNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRew
     model.solve()
     return model.solution.get_objective_value(), model, None
 
-def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=100):
+def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
     """A game where defender assignments are not allowed to overlap, with as many
     dummy targets as defenders (represents defenders not having to be assigned).
     This problem is the dual of the primal above, and is solved using the ellipsoid
@@ -198,28 +197,35 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
         for lam in aTypes:
             for t0 in targetRange:
                 # Subproblem 1
-                # Build the weights
-                weightMatrix = np.zeros(shape=(targetNumWithDummies,targetNumWithDummies))
+                edges = {}
+                # Graph weights with normal defenders
                 for d in defenders:
+                    edges[f"d_{d}"] = {}
                     for t in targetRange:
-                        if t != t0:
-                            weightValue = -q[lam]*_dCosts[d][t] \
-                                            + (_dRewards[d][t0] + _dCosts[d][t0] - _dPenalties[d][t0] - _dCosts[d][t]) * float(b[t, t0, d]) \
-                                            + sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[t,tPrime,d]) for tPrime in targetRange if tPrime != t0]) \
-                                            + (_aPenalties[lam][t] - _aRewards[lam][t0]) * float(a[t0, t, lam])
-                            weightMatrix[d][t] = weightValue
+                        if t == t0:
+                            weightValue = 10000000
                         else:
-                            weightValue = 100000
-                            weightMatrix[d][t] = weightValue
+                            weightValue = (-q[lam]) * _dCosts[d][t] \
+                                        + (_dRewards[d][t0] + _dCosts[d][t0] - _dPenalties[d][t0] - _dCosts[d][t]) * float(b[t,t0,d]) \
+                                        + (sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[t,tPrime,d]) for tPrime in targetRange if tPrime != t0])) \
+                                        + (_aPenalties[lam][t] - _aRewards[lam][t0]) * float(a[t0,t,lam])
+                        edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
+                # Graph weights with added defenders
                 for d in range(len(defenders), targetNumWithDummies):
+                    edges[f"ed_{d}"] = {}
                     for t in targetRange:
                         weightValue = (_aRewards[lam][t] - _aRewards[lam][t0]) * float(a[t0,t,lam])
-                        weightMatrix[d][t] = weightValue
+                        edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
 
                 # Solve the problem
-                defenderIndexes, placementIndexes = optimize.linear_sum_assignment(weightMatrix)
-                newPlacement = [defenderPlacement for defenderPlacement in placementIndexes[:len(defenders)]]
-                newPlacementCost = weightMatrix[defenderIndexes, placementIndexes].sum()
+                G = nx.from_dict_of_dicts(edges)
+                matchings = nx.algorithms.bipartite.minimum_weight_full_matching(G)
+                newPlacement = [0] * len(defenders)
+                for k,v in matchings.items():
+                    if k.startswith("d_"):
+                        defender = int(k.split("_")[1])
+                        target = int(v.split("_")[1])
+                        newPlacement[defender] = target
 
                 # Check the value of this s using (9) -- if negative, add s to
                 # the subset of solutions.
@@ -227,43 +233,39 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                             sum([(utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[newPlacement[d],tPrime,d]) for d in defenders for tPrime in targetRange]) - \
                             (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties)) + float(g[lam])
 
-                existsFromPreviousIteration = False
                 if value < EPSILON:
-                    violatedConstraints = True
                     signal = (newPlacement,t0)
-                    if signal not in subsetS and signal not in signalsToBeAdded:
+                    if signal not in signalsToBeAdded:
+                        print(f"SP1: There is a violated constraint for signal: {signal} with value: {value}")
+                        violatedConstraints = True
                         signalsToBeAdded.append(signal)
-                    elif signal not in signalsToBeAdded:
-                        existsFromPreviousIteration = True
 
                 # Subproblem 2
                 # Fix each possible defender that coveres t0. For each of these, find
                 # the best matching
                 for d0 in defenders:
                     edges = {}
-                    # Set weights for the defenders
+                    # Graph weights with normal defenders (minus d0 and t0)
                     for d in defenders:
                         if d != d0:
                             edges[f"d_{d}"] = {}
                             for t in targetRange:
                                 if t != t0:
-                                    weightValue = (_aPenalties[lam][t] - _aPenalties[lam][t0]) * float(a[t0,t,lam]) + \
-                                                    sum([(_dCosts[d][tPrime] - _dCosts[d][t] )* float(b[t,tPrime,d]) for tPrime in targetRange])  - \
-                                                    q[lam] * _dCosts[d][t]
+                                    weightValue = (_aPenalties[lam][t] - _aPenalties[lam][t0]) * float(a[t0,t,lam]) \
+                                                + (sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[t,tPrime,d]) for tPrime in targetRange])) \
+                                                - (q[lam] * _dCosts[d][t])
                                     edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
-                    # Add buffer defenders to reach the target count
+                    # Graph weights with added defenders (minus t0)
                     for d in range(len(defenders), targetNumWithDummies):
                         edges[f"ed_{d}"] = {}
                         for t in targetRange:
                             if t != t0:
                                 weightValue = (_aRewards[lam][t] - _aPenalties[lam][t0]) * float(a[t0,t,lam])
                                 edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
-                    # Build the graph
-                    G = nx.from_dict_of_dicts(edges)
-                    # Solve the problem
-                    matchings = nx.algorithms.bipartite.minimum_weight_full_matching(G)
 
-                    # Convert the solution back into our setting
+                    # Solve the problem
+                    G = nx.from_dict_of_dicts(edges)
+                    matchings = nx.algorithms.bipartite.minimum_weight_full_matching(G)
                     newPlacement = [0] * len(defenders)
                     for k,v in matchings.items():
                         if k.startswith("d_"):
@@ -276,11 +278,13 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                     # the subset of solutions.
                     value = sum([(aUtility(newPlacement,tPrime,lam,_aPenalties,_aRewards) - aUtility(newPlacement,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange]) + \
                                 sum([(utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[newPlacement[d],tPrime,d]) for d in defenders for tPrime in targetRange]) - \
-                                (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties))
+                                (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties)) + float(g[lam])
+
                     if value < EPSILON:
-                        violatedConstraints = True
                         signal = (newPlacement,t0)
-                        if signal not in subsetS and signal not in signalsToBeAdded:
+                        if signal not in signalsToBeAdded:
+                            print(f"SP2: There is a violated constraint for signal: {signal} with value: {value}")
+                            violatedConstraints = True
                             signalsToBeAdded.append(signal)
 
         # Now that we have checked all the violated constraints, either return
