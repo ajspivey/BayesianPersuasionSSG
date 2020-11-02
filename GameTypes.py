@@ -24,6 +24,71 @@ models = {}
 # GAME TYPES
 # ==========
 # ------------------------------------------------------------------------------
+def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+    """A game where self-interested defenders optimize in a bayesian setting and the attacker performs a best-response to their strategy"""
+    """Contains a dummy target for defenders and attackers"""
+    # Add the dummy target
+    _dRewards = copy.deepcopy(dRewards)
+    _dPenalties = copy.deepcopy(dPenalties)
+    _dCosts = copy.deepcopy(dCosts)
+    _aRewards = copy.deepcopy(aRewards)
+    _aPenalties = copy.deepcopy(aPenalties)
+    for m in defenders:
+        _dRewards[m].append(0)
+        _dPenalties[m].append(0)
+        _dCosts[m].append(0)
+    for lam in aTypes:
+        _aRewards[lam].append(0)
+        _aPenalties[lam].append(0)
+    targetNumWithDummies = len(_dRewards[0])
+    targetRange = list(range(targetNumWithDummies))
+
+    # Generate the placements and keys
+    placements = getPlacements(defenders, targetNumWithDummies)
+    attackerActions = targetRange
+    omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
+
+    # Construct the model for each defender
+    baselineUtility = 0
+    dStrat = {}
+    models2 = {}
+    for m in defenders:
+        model2 = Model(f"defenderStrategy{m}")
+        x = model2.continuous_var_list(keys=targetNumWithDummies, lb=0, ub=1, name=f"x{m}")
+        h = model2.binary_var_dict(keys=[(lam, k) for lam in aTypes for k in targetRange], lb=0, ub=1, name=f"h{m}")
+        ul = model2.continuous_var_dict(keys=aTypes, lb=-model2.infinity, name=f"ua{m}")
+        ud = model2.continuous_var_dict(keys=[lam for lam in aTypes], lb=-model2.infinity, name=f"ud{m}")
+        objectiveFunction = sum([q[lam] * ud[lam] for lam in aTypes])
+        model2.add_constraints([ud[lam] <= utilityDI(m,x,i,_dRewards,_dPenalties,_dCosts) + (1-h[(lam,i)]) * M for i in targetRange for lam in aTypes], names=[f"defender utility for lam {lam}, i {i}" for i in targetRange for lam in aTypes])
+        model2.add_constraints([ul[lam] <= utilityLamI(x,lam,i,_aRewards,_aPenalties) + (1-h[(lam,i)]) * M for i in targetRange for lam in aTypes], names=[f"lam {lam} utility leq for i {i}" for i in targetRange for lam in aTypes])
+        model2.add_constraints([ul[lam] >= utilityLamI(x,lam,i,_aRewards,_aPenalties) for i in targetRange for lam in aTypes], names=[f"lam {lam} utility geq, for i {i}" for i in targetRange for lam in aTypes])
+        model2.add_constraints([sum([h[(lam,i)] for i in targetRange]) == 1 for lam in aTypes], names=[f"h sum is 1 for lam {lam}" for lam in aTypes])
+        model2.add_constraint(sum([x[i] for i in targetRange]) == 1)
+        # Solve the model for each defender
+        model2.maximize(objectiveFunction)
+        model2.solve()
+        model2.export("baselineModel.lp")
+        dStrat[m] = list([float(xVal) for xVal in x])
+        models[m] = model2
+    # Attacker best response (for each attacker type)
+    aStrat = {}
+    protectionOdds = probabilityProtected(dStrat, targetNumWithDummies)
+    for lam in aTypes:
+        expectedUtilities = []
+        for i in targetRange:
+            expectedUtilities.append(((1-protectionOdds[i])*_aRewards[lam][i]) + (protectionOdds[i]*_aPenalties[lam][i]))
+        aStrat[lam] = argmax(expectedUtilities)
+    # Calculate defender expected utility for attacker best response
+    for m in defenders:
+        for lam in aTypes:
+            attackedTarget = aStrat[lam]                                                                                        # The target attacked by this attacker
+            coveredUtility = dStrat[m][attackedTarget] * (_dRewards[m][attackedTarget] + _dCosts[m][attackedTarget])            # The expected utility we catch this attacker
+            uncoveredUtility = (1-dStrat[m][attackedTarget]) * (_dPenalties[m][attackedTarget] + _dCosts[m][attackedTarget])    # The expected utility we miss this attacker
+            baselineUtility +=  q[lam] * (coveredUtility + uncoveredUtility)
+    return baselineUtility, models, None
+
+
+# ------------------------------------------------------------------------------
 def solveBPAllowOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
     """A game where defender assignments are allowed to overlap (more than one defender per target is allowed)"""
     print("Generating placments!")
@@ -52,27 +117,42 @@ def solveBPAllowOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTyp
     return model.solution.get_objective_value(), model, None
 
 # ------------------------------------------------------------------------------
-def solveBPNoRequiredDefenderAssignment(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    """A game where defender assignments are allowed to overlap, with one dummy target (represents defenders not having to be assigned)"""
+def solvePrimalOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+    """A game where defender assignments are allowed to overlap, with one dummy target (represents defenders and attackers not having to be assigned)"""
+    # Add the extra dummy target
     _dRewards = copy.deepcopy(dRewards)
     _dPenalties = copy.deepcopy(dPenalties)
     _dCosts = copy.deepcopy(dCosts)
+    _aRewards = copy.deepcopy(aRewards)
+    _aPenalties = copy.deepcopy(aPenalties)
     for m in defenders:
-        _dRewards[m].append(0)
-        _dPenalties[m].append(0)
-        _dCosts[m].append(0)
-    placements = getPlacements(defenders, targetNum + 1)
-    attackerActions = list(range(targetNum))
+        for defenderCount in defenders:
+            _dRewards[m].append(0)
+            _dPenalties[m].append(0)
+            _dCosts[m].append(0)
+        for lam in aTypes:
+            _aRewards[lam].append(0)
+            _aPenalties[lam].append(0)
+    targetNumWithDummies = len(_dRewards[0])
+    targetRange = list(range(targetNumWithDummies))
+    attackerActions = targetRange
+    placements = getPlacements(defenders, targetNumWithDummies)
     omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
-    model = Model('BayesianPersuasionSolverWithoutRequiredAssignment')
-    w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
-    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dRewards, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
 
-    model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
-    model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
-                           sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
-                           for m in defenders for d in range(targetNum + 1) for e in range(targetNum + 1) if d != e for lam in aTypes])
-    model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
+    # Build the model
+    model = Model('PrimalWithOverlap')
+    w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
+    objectiveFunction = sum([q[lam] * sum([w[s,a,lam] * defenderSocialUtility(s,a,defenders,_dRewards,_dCosts,_dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
+    c1 = [sum([w[s,a,lam] * aUtility(s,a,lam,_aPenalties,_aRewards) for s in placements]) \
+                            >= sum([w[s,a,lam] * aUtility(s,b,lam,_aPenalties,_aRewards) for s in placements])
+                            for lam in aTypes for a in attackerActions for b in attackerActions if a != b]
+    c1 = [constraint for constraint in c1 if not isinstance(constraint, bool)]
+    c1 = model.add_constraints(c1)
+    c2 = model.add_constraints([sum([q[lam] * sum([w[s,a,lam] * utilityM(d,s,a,m,_dRewards,_dPenalties,_dCosts) for a in attackerActions for s in placements if s[m] == d]) for lam in aTypes]) \
+                            >= sum([q[lam] * sum([w[s,a,lam] * utilityM(e,s,a,m,_dRewards,_dPenalties,_dCosts) for a in attackerActions for s in placements if s[m] == d]) for lam in aTypes])
+                            for m in defenders for d in targetRange for e in targetRange if d!=e])
+    c3 = model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
+    # Solve the model
     model.maximize(objectiveFunction)
     model.solve()
     return model.solution.get_objective_value(), model, None
@@ -104,7 +184,7 @@ def solveBPNOOD(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRew
     return model.solution.get_objective_value(), model, None
 
 # ------------------------------------------------------------------------------
-def solveBPNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+def solvePrimalNoOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
     """A game where defender assignments are not allowed to overlap, with as many dummy targets as defenders (represents defenders not having to be assigned)"""
     _dRewards = copy.deepcopy(dRewards)
     _dPenalties = copy.deepcopy(dPenalties)
@@ -130,7 +210,7 @@ def solveBPNOND(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRew
     model.solve()
     return model.solution.get_objective_value(), model, None
 
-def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
+def solveDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
     """A game where defender assignments are not allowed to overlap, with as many
     dummy targets as defenders (represents defenders not having to be assigned).
     This problem is the dual of the primal above, and is solved using the ellipsoid
@@ -185,11 +265,11 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
 
     # Solve the dual using column generation
     for _ in range(maxIterations):
-        print(f"ITERATION: {_}")
+        # print(f"ITERATION: {_}")
 
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
-        print(f"Utility on iteration {_} = {relaxedModel.solution.get_objective_value()}")
+        # print(f"Utility on iteration {_} = {relaxedModel.solution.get_objective_value()}")
 
         # For every lam,t0, split (9) into two subproblems and solve each.
         violatedConstraints = False
@@ -220,8 +300,6 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                 # Solve the problem
                 G = nx.from_dict_of_dicts(edges)
                 matchings = nx.algorithms.bipartite.minimum_weight_full_matching(G)
-                print(edges)
-                print(matchings)
                 newPlacement = [0] * len(defenders)
                 for k,v in matchings.items():
                     if k.startswith("d_"):
@@ -241,51 +319,51 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
                         violatedConstraints = True
                         signalsToBeAdded.append(signal)
 
-                # # Subproblem 2
-                # # Fix each possible defender that coveres t0. For each of these, find
-                # # the best matching
-                # for d0 in defenders:
-                #     edges = {}
-                #     # Graph weights with normal defenders (minus d0 and t0)
-                #     for d in defenders:
-                #         if d != d0:
-                #             edges[f"d_{d}"] = {}
-                #             for t in targetRange:
-                #                 if t != t0:
-                #                     weightValue = (_aPenalties[lam][t] - _aPenalties[lam][t0]) * float(a[t0,t,lam]) \
-                #                                 + q[lam] * (sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[t,tPrime,d]) for tPrime in targetRange])) \
-                #                                 - (q[lam] * _dCosts[d][t])
-                #                     edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
-                #     # Graph weights with added defenders (minus t0)
-                #     for d in range(len(defenders), targetNumWithDummies):
-                #         edges[f"ed_{d}"] = {}
-                #         for t in targetRange:
-                #             if t != t0:
-                #                 weightValue = (_aRewards[lam][t] - _aPenalties[lam][t0]) * float(a[t0,t,lam])
-                #                 edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
-                #
-                #     # Solve the problem
-                #     G = nx.from_dict_of_dicts(edges)
-                #     matchings = nx.algorithms.bipartite.minimum_weight_full_matching(G)
-                #     newPlacement = [0] * len(defenders)
-                #     for k,v in matchings.items():
-                #         if k.startswith("d_"):
-                #             defender = int(k.split("_")[1])
-                #             target = int(v.split("_")[1])
-                #             newPlacement[defender] = target
-                #     newPlacement[d0] = t0
-                #
-                #     # Check the value of this s using (9) -- if negative, add s to
-                #     # the subset of solutions.
-                #     value = sum([(aUtility(newPlacement,tPrime,lam,_aPenalties,_aRewards) - aUtility(newPlacement,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange])\
-                #                 + q[lam] * sum([(utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[newPlacement[d],tPrime,d]) for d in defenders for tPrime in targetRange])\
-                #                 - (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties)) + float(g[lam])
-                #
-                #     if value < EPSILON:
-                #         signal = (newPlacement,t0)
-                #         if signal not in signalsToBeAdded:
-                #             violatedConstraints = True
-                #             signalsToBeAdded.append(signal)
+                # Subproblem 2
+                # Fix each possible defender that coveres t0. For each of these, find
+                # the best matching
+                for d0 in defenders:
+                    edges = {}
+                    # Graph weights with normal defenders (minus d0 and t0)
+                    for d in defenders:
+                        if d != d0:
+                            edges[f"d_{d}"] = {}
+                            for t in targetRange:
+                                if t != t0:
+                                    weightValue = (_aPenalties[lam][t] - _aPenalties[lam][t0]) * float(a[t0,t,lam]) \
+                                                + q[lam] * (sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[t,tPrime,d]) for tPrime in targetRange])) \
+                                                - (q[lam] * _dCosts[d][t])
+                                    edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
+                    # Graph weights with added defenders (minus t0)
+                    for d in range(len(defenders), targetNumWithDummies):
+                        edges[f"ed_{d}"] = {}
+                        for t in targetRange:
+                            if t != t0:
+                                weightValue = (_aRewards[lam][t] - _aPenalties[lam][t0]) * float(a[t0,t,lam])
+                                edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
+
+                    # Solve the problem
+                    G = nx.from_dict_of_dicts(edges)
+                    matchings = nx.algorithms.bipartite.minimum_weight_full_matching(G)
+                    newPlacement = [0] * len(defenders)
+                    for k,v in matchings.items():
+                        if k.startswith("d_"):
+                            defender = int(k.split("_")[1])
+                            target = int(v.split("_")[1])
+                            newPlacement[defender] = target
+                    newPlacement[d0] = t0
+
+                    # Check the value of this s using (9) -- if negative, add s to
+                    # the subset of solutions.
+                    value = sum([(aUtility(newPlacement,tPrime,lam,_aPenalties,_aRewards) - aUtility(newPlacement,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange])\
+                                + q[lam] * sum([(utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[newPlacement[d],tPrime,d]) for d in defenders for tPrime in targetRange])\
+                                - (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties)) + float(g[lam])
+
+                    if value < EPSILON:
+                        signal = (newPlacement,t0)
+                        if signal not in signalsToBeAdded:
+                            violatedConstraints = True
+                            signalsToBeAdded.append(signal)
 
         # Now that we have checked all the violated constraints, either return
         # the solution ( get the dual values) or recompute the optimal value of
@@ -307,42 +385,3 @@ def solveBPNONDDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts,
     # print(f"{relaxedModel.solution.get_objective_value()}")
     # print(relaxedModel.dual_values(relaxedModel.iter_constraints()))
     return relaxedModel.solution.get_objective_value(), relaxedModel, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
-
-
-# ------------------------------------------------------------------------------
-def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    """A game where self-interested defenders optimize in a bayesian setting and the attacker performs a best-response to their strategy"""
-    placements = getPlacements(defenders, targetNum)
-    attackerActions = list(range(targetNum))
-    omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
-    baselineUtility = 0
-    dStrat = {}
-    models2 = {}
-    for m in defenders:
-        model2 = Model(f"defenderStrategy{m}")
-        x = model2.continuous_var_list(keys=targetNum, lb=0, ub=1, name=f"x{m}")
-        h = model2.binary_var_dict(keys=[(lam, k) for lam in aTypes for k in range(targetNum)], lb=0, ub=1, name=f"h{m}")
-        ul = model2.continuous_var_dict(keys=aTypes, lb=-model2.infinity, name=f"ua{m}")
-        ud = model2.continuous_var_dict(keys=[lam for lam in aTypes], lb=-model2.infinity, name=f"ud{m}")
-        objectiveFunction = sum([q[lam] * ud[lam] for lam in aTypes])
-        model2.add_constraints([ud[lam] <= utilityDI(m,x,i,dRewards,dPenalties,dCosts) + (1-h[(lam,i)]) * M for i in range(targetNum) for lam in aTypes], names=[f"defender utility for lam {lam}, i {i}" for i in range(targetNum) for lam in aTypes])
-        model2.add_constraints([ul[lam] <= utilityLamI(x,lam,i,aRewards,aPenalties) + (1-h[(lam,i)]) * M for i in range(targetNum) for lam in aTypes], names=[f"lam {lam} utility leq for i {i}" for i in range(targetNum) for lam in aTypes])
-        model2.add_constraints([ul[lam] >= utilityLamI(x,lam,i,aRewards,aPenalties) for i in range(targetNum) for lam in aTypes], names=[f"lam {lam} utility geq, for i {i}" for i in range(targetNum) for lam in aTypes])
-        model2.add_constraints([sum([h[(lam,i)] for i in range(targetNum)]) == 1 for lam in aTypes], names=[f"h sum is 1 for lam {lam}" for lam in aTypes])
-        model2.add_constraint(sum([x[i] for i in range(targetNum)]) == 1)
-        # Solve the problem
-        model2.maximize(objectiveFunction)
-        model2.solve()
-        dStrat[m] = list([float(xVal) for xVal in x])
-        models[m] = model2
-    # Attacker response
-    aStrat = 0
-    protectionOdds = probabilityProtected(dStrat, targetNum)
-    for lam in aTypes:
-        expectedUtilities = []
-        for i in range(targetNum):
-            expectedUtilities.append(((1-protectionOdds[i])*aRewards[lam][i]) + (protectionOdds[i]*aPenalties[lam][i]))
-        aStrat = argmax(expectedUtilities)
-    for m in defenders:
-        baselineUtility += dStrat[m][aStrat] * (dRewards[m][aStrat] + dCosts[m][aStrat]) + (1-dStrat[m][aStrat]) * (dPenalties[m][aStrat] + dCosts[m][aStrat])
-    return baselineUtility, models, None
