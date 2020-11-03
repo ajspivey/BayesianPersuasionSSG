@@ -20,7 +20,8 @@ from util import generateRandomDefenders, generateRandomAttackers, numberToBase,
                 probabilityProtected, createGraph
 
 from gameTypes import solveBaseline, solvePrimalOverlap, solvePrimalNoOverlap, solveDualEllipsoid
-random.seed(1)
+# This has a much higher baseline for some reason
+# random.seed(1)
 # random.seed(7)
 # random.seed(18)
 # random.seed(20)
