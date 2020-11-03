@@ -158,57 +158,48 @@ def solvePrimalOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aType
     return model.solution.get_objective_value(), model, None
 
 # ------------------------------------------------------------------------------
-def solveBPNOOD(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    """A game where defender assignments are not allowed to overlap, with one dummy target (represents one defender that does not have to be assigned)"""
-    _dRewards = copy.deepcopy(dRewards)
-    _dPenalties = copy.deepcopy(dPenalties)
-    _dCosts = copy.deepcopy(dCosts)
-    for m in defenders:
-        _dRewards[m].append(0)
-        _dPenalties[m].append(0)
-        _dCosts[m].append(0)
-    overlapPlacements = getPlacements(defenders, targetNum + 1)
-    placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
-    attackerActions = list(range(targetNum))
-    omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
-    model = Model('BayesianPersuasionSolverWithOverlap')
-    w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
-    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dRewards, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
-    model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
-    model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
-                           sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
-                           for m in defenders for d in range(targetNum + 1) for e in range(targetNum + 1) if d != e for lam in aTypes], names=[f"defender {m} suggested {d}, but goes to {e} with att {lam}" for m in defenders for d in range(targetNum + 1) for e in range(targetNum + 1) if d != e for lam in aTypes])
-    model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes], names=[f"sum must be 1 for att: {lam}" for lam in aTypes])
-    model.maximize(objectiveFunction)
-    model.solve()
-    return model.solution.get_objective_value(), model, None
-
-# ------------------------------------------------------------------------------
 def solvePrimalNoOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    """A game where defender assignments are not allowed to overlap, with as many dummy targets as defenders (represents defenders not having to be assigned)"""
+    """A game where defender assignments are allowed to overlap, with one dummy target (represents defenders and attackers not having to be assigned)"""
+    # Add the extra dummy targets
     _dRewards = copy.deepcopy(dRewards)
     _dPenalties = copy.deepcopy(dPenalties)
     _dCosts = copy.deepcopy(dCosts)
+    _aRewards = copy.deepcopy(aRewards)
+    _aPenalties = copy.deepcopy(aPenalties)
     for m in defenders:
         for defenderCount in defenders:
             _dRewards[m].append(0)
             _dPenalties[m].append(0)
             _dCosts[m].append(0)
-    overlapPlacements = getPlacements(defenders, targetNum + len(defenders))
+        for lam in aTypes:
+            _aRewards[lam].append(0)
+            _aPenalties[lam].append(0)
+    targetNumWithDummies = len(_dRewards[0])
+    targetRange = list(range(targetNumWithDummies))
+    attackerActions = targetRange
+    # Get the suggestions that occur with no overlap
+    overlapPlacements = getPlacements(defenders, targetNumWithDummies)
     placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
-    attackerActions = list(range(targetNum))
     omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
-    model = Model('BayesianPersuasionSolverWithOverlap')
+
+    # Build the model
+    model = Model('PrimalWithOverlap')
     w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
-    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders, _dRewards, _dCosts, _dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
-    model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
-    model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
-                           sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m, _dRewards, _dPenalties, _dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
-                           for m in defenders for d in range(targetNum + len(defenders)) for e in range(targetNum + len(defenders)) if d != e for lam in aTypes])
-    model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
+    objectiveFunction = sum([q[lam] * sum([w[s,a,lam] * defenderSocialUtility(s,a,defenders,_dRewards,_dCosts,_dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
+    c1 = [sum([w[s,a,lam] * aUtility(s,a,lam,_aPenalties,_aRewards) for s in placements]) \
+                            >= sum([w[s,a,lam] * aUtility(s,b,lam,_aPenalties,_aRewards) for s in placements])
+                            for lam in aTypes for a in attackerActions for b in attackerActions if a != b]
+    c1 = [constraint for constraint in c1 if not isinstance(constraint, bool)]
+    c1 = model.add_constraints(c1)
+    c2 = model.add_constraints([sum([q[lam] * sum([w[s,a,lam] * utilityM(d,s,a,m,_dRewards,_dPenalties,_dCosts) for a in attackerActions for s in placements if s[m] == d]) for lam in aTypes]) \
+                            >= sum([q[lam] * sum([w[s,a,lam] * utilityM(e,s,a,m,_dRewards,_dPenalties,_dCosts) for a in attackerActions for s in placements if s[m] == d]) for lam in aTypes])
+                            for m in defenders for d in targetRange for e in targetRange if d!=e])
+    c3 = model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
+    # Solve the model
     model.maximize(objectiveFunction)
     model.solve()
     return model.solution.get_objective_value(), model, None
+
 
 def solveDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
     """A game where defender assignments are not allowed to overlap, with as many
