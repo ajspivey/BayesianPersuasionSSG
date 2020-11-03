@@ -69,51 +69,47 @@ def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aR
         model2.solve()
         model2.export("baselineModel.lp")
         dStrat[m] = list([float(xVal) for xVal in x])
+        print(f"Strategy for defender {m}: {dStrat[m]}")
         models[m] = model2
     # Attacker best response (for each attacker type)
     aStrat = {}
     protectionOdds = probabilityProtected(dStrat, targetNumWithDummies)
+    print(f"Protection odds: {protectionOdds}")
     for lam in aTypes:
         expectedUtilities = []
         for i in targetRange:
             expectedUtilities.append(((1-protectionOdds[i])*_aRewards[lam][i]) + (protectionOdds[i]*_aPenalties[lam][i]))
+        print(f"ExpectedUtilities for {lam}: {expectedUtilities}")
         aStrat[lam] = argmax(expectedUtilities)
+        print(f"Strat for {lam}: {aStrat[lam]}")
     # Calculate defender expected utility for attacker best response
     for m in defenders:
         for lam in aTypes:
             attackedTarget = aStrat[lam]                                                                                        # The target attacked by this attacker
-            coveredUtility = dStrat[m][attackedTarget] * (_dRewards[m][attackedTarget] + _dCosts[m][attackedTarget])            # The expected utility we catch this attacker
-            uncoveredUtility = (1-dStrat[m][attackedTarget]) * (_dPenalties[m][attackedTarget] + _dCosts[m][attackedTarget])    # The expected utility we miss this attacker
+            coveredUtility = protectionOdds[attackedTarget] * (_dRewards[m][attackedTarget])                                    # The expected utility we catch this attacker
+            uncoveredUtility = (1-protectionOdds[attackedTarget]) * (_dPenalties[m][attackedTarget])                            # The expected utility we miss this attacker
             baselineUtility +=  q[lam] * (coveredUtility + uncoveredUtility)
+        expectedCost = sum([dStrat[m][target] * _dCosts[m][target] for target in targetRange])
+        baselineUtility += expectedCost
     return baselineUtility, models, None
 
 
 # ------------------------------------------------------------------------------
 def solveBPAllowOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
     """A game where defender assignments are allowed to overlap (more than one defender per target is allowed)"""
-    print("Generating placments!")
     placements = getPlacements(defenders, targetNum)
     attackerActions = list(range(targetNum))
-    print("Generating keys!")
     omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
     model = Model('BayesianPersuasionSolverWithOverlap')
-    print("Creating model!")
     w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
-    print("variable created")
     objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders,dRewards, dCosts, dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
-    print("objective function done")
     model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
-    print("attacker constraints done")
     model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, dRewards, dPenalties, dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
                            sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m, dRewards, dPenalties, dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
                            for m in defenders for d in range(targetNum) for e in range(targetNum) if d != e for lam in aTypes])
-    print("Defender constraints done")
     model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
-    print("probability constraints done")
-    print("Solving!")
     model.maximize(objectiveFunction)
     model.solve()
-    print("DONE!")
     return model.solution.get_objective_value(), model, None
 
 # ------------------------------------------------------------------------------
@@ -155,6 +151,9 @@ def solvePrimalOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aType
     # Solve the model
     model.maximize(objectiveFunction)
     model.solve()
+    print(f"Strategy:")
+    for k,v in w.items():
+        print(k, float(v))
     return model.solution.get_objective_value(), model, None
 
 # ------------------------------------------------------------------------------
