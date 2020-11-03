@@ -18,8 +18,7 @@ from util import generateRandomDefenders, generateRandomAttackers, numberToBase,
                 getPlacements, getOmegaKeys, defenderSocialUtility, utilityM, \
                 aUtility, getLambdaPlacements, utilityDI, utilityLamI, \
                 probabilityProtected, createGraph
-from gameTypes import solveBPAllowOverlap, solveBPNoRequiredDefenderAssignment, \
-                    solveBPNOOD, solveBPNOND, solveBaseline, solveBPNONDDualEllipsoid
+from gameTypes import solveBaseline, solvePrimalOverlap, solvePrimalNoOverlap, solveDualEllipsoid
 
 # ==============================================================================
 # FUNCTIONS
@@ -110,7 +109,7 @@ def generateGraph(gameTypeList, iterationFunction, iterableLabel):
         gameTimes[gameType[1]] = []
     overBudgets = [False] * len(gameTypeList)
     for _ in range(minIterable, maxIterable):
-        print(f"Iteration {_} of {maxIterable} for targetCount")
+        print(f"Iteration {_} of {maxIterable} for {iterableLabel}")
         utilities, times = iterationFunction(iterable=_, avgCount=AVGCOUNT, gameTypeList=[gameType[0] for gameType in gameTypeList], overBudgets=overBudgets)
         for gameIndex in range(len(overBudgets)):
             if times[gameIndex] is not None and times[gameIndex] > timeBudget:
@@ -135,8 +134,8 @@ maxIterable = 6
 # ==============================================================================
 # LP Definition & Constraints
 # ==============================================================================
-gameTypeList = [(solveBaseline,"Baseline", "y"), (solveBPAllowOverlap,"Allow Overlap", "r"), (solveBPNONDDualEllipsoid,"Dual w/ Ellipsoid", "g")]
+gameTypeList = [(solveBaseline,"Baseline", "y"), (solvePrimalOverlap,"Allow Overlap", "r"), (solvePrimalNoOverlap,"No Overlap", "g"), (solveDualEllipsoid,"Dual w/ Ellipsoid", "b")]
 # Iterate over the targets
-# generateGraph(gameTypeList, iterateTargets, "Targets")
-generateGraph(gameTypeList, iterateDefenders, "Defenders")
+generateGraph(gameTypeList, iterateTargets, "Targets")
+# generateGraph(gameTypeList, iterateDefenders, "Defenders")
 # generateGraph(gameTypeList, iterateAttackers, "Attackers")
