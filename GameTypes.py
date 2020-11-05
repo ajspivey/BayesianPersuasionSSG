@@ -20,12 +20,17 @@ defenderUtilities = []
 solutionTimes = []
 models = {}
 
-# ==========
+# ==============================================================================
 # GAME TYPES
-# ==========
+# ==============================================================================
+
+# =======
+# EX POST
+# =======
 # ------------------------------------------------------------------------------
 def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    """A game where self-interested defenders optimize in a bayesian setting and the attacker performs a best-response to their strategy"""
+    """A game where self-interested defenders optimize in a bayesian setting and
+    the attacker performs a best-response to their strategy"""
     """Contains a dummy target for defenders and attackers"""
     # Add the dummy target
     _dRewards = copy.deepcopy(dRewards)
@@ -93,28 +98,10 @@ def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aR
         baselineUtility += expectedCost
     return baselineUtility, models, None
 
-
-# ------------------------------------------------------------------------------
-def solveBPAllowOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    """A game where defender assignments are allowed to overlap (more than one defender per target is allowed)"""
-    placements = getPlacements(defenders, targetNum)
-    attackerActions = list(range(targetNum))
-    omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
-    model = Model('BayesianPersuasionSolverWithOverlap')
-    w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
-    objectiveFunction = sum([q[lam] * sum([w[(s,a,lam)] * defenderSocialUtility(s,a,defenders,dRewards, dCosts, dPenalties) for s in placements for a in attackerActions]) for lam in aTypes])
-    model.add_constraints([sum([w[(s,a,lam)] * aUtility(s,a,lam, aPenalties, aRewards) for s in placements]) >= sum([w[(s,a,lam)] * aUtility(s,b,lam, aPenalties, aRewards) for s in placements]) for a in attackerActions for b in attackerActions if a != b for lam in aTypes], names=[f"c att {lam} suggested {a}, but goes to {b}" for a in attackerActions for b in attackerActions if a != b for lam in aTypes])
-    model.add_constraints([sum([q[lam] * sum([w[dm,a,lam] * utilityM(d,dm,a,m, dRewards, dPenalties, dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) >= \
-                           sum([q[lam] * sum([w[dm,a,lam] * utilityM(e,dm,a,m, dRewards, dPenalties, dCosts) for a in attackerActions for dm in placements if dm[m] == d])]) \
-                           for m in defenders for d in range(targetNum) for e in range(targetNum) if d != e for lam in aTypes])
-    model.add_constraints([sum([w[(s,a,lam)] for s in placements for a in attackerActions]) == 1 for lam in aTypes])
-    model.maximize(objectiveFunction)
-    model.solve()
-    return model.solution.get_objective_value(), model, None
-
 # ------------------------------------------------------------------------------
 def solvePrimalOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    """A game where defender assignments are allowed to overlap, with one dummy target (represents defenders and attackers not having to be assigned)"""
+    """A game where defender assignments are allowed to overlap"""
+    """Contains a dummy target for defenders and attackers"""
     # Add the extra dummy target
     _dRewards = copy.deepcopy(dRewards)
     _dPenalties = copy.deepcopy(dPenalties)
@@ -158,7 +145,8 @@ def solvePrimalOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aType
 
 # ------------------------------------------------------------------------------
 def solvePrimalNoOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    """A game where defender assignments are allowed to overlap, with one dummy target (represents defenders and attackers not having to be assigned)"""
+    """A game where defender assignments are not allowed to overlap"""
+    """Contains as many dummy targets as defenders, for defenders and attackers"""
     # Add the extra dummy targets
     _dRewards = copy.deepcopy(dRewards)
     _dPenalties = copy.deepcopy(dPenalties)
@@ -201,10 +189,9 @@ def solvePrimalNoOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
 
 
 def solveDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
-    """A game where defender assignments are not allowed to overlap, with as many
-    dummy targets as defenders (represents defenders not having to be assigned).
-    This problem is the dual of the primal above, and is solved using the ellipsoid
-    method."""
+    """A game where defender assignments are not allowed to overlap"""
+    """Contains as many dummy targets as defenders, for defenders and attackers"""
+    """This problem is the dual of the primal above, and is solved using the ellipsoid method."""
     # Add extra dummy targets
     _dRewards = copy.deepcopy(dRewards)
     _dPenalties = copy.deepcopy(dPenalties)
@@ -367,11 +354,22 @@ def solveDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aType
         for signal in signalsToBeAdded:
             subsetS.append(signal)
         if not violatedConstraints:
-            # print("NO VIOLATED CONSTRAINTS")
-            # print(f"Iteration Count: {_}")
             # print(relaxedModel.dual_values(relaxedModel.iter_constraints()))
             return relaxedModel.solution.get_objective_value(), relaxedModel, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
-    # print(f"Iteration Count: 100 -- max iterations")
-    # print(f"{relaxedModel.solution.get_objective_value()}")
     # print(relaxedModel.dual_values(relaxedModel.iter_constraints()))
     return relaxedModel.solution.get_objective_value(), relaxedModel, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
+
+# =======
+# EX ANTE
+# =======
+# ------------------------------------------------------------------------------
+def solvePrimalOverlapEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+    return None, None, None
+
+# ------------------------------------------------------------------------------
+def solvePrimalNoOverlapEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+    return None, None, None
+
+
+def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
+    return None, None, None
