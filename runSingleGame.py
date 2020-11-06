@@ -19,17 +19,13 @@ from util import generateRandomDefenders, generateRandomAttackers, numberToBase,
                 aUtility, getLambdaPlacements, utilityDI, utilityLamI, \
                 probabilityProtected, createGraph
 
-from gameTypes import solveBaseline, solvePrimalOverlap, solvePrimalNoOverlap, solveDualEllipsoid
-# This has a much higher baseline for some reason
-# random.seed(1)
-# random.seed(7)
-# random.seed(18)
-# random.seed(20)
+from gameTypes import solveBaseline, solvePrimalOverlap, solvePrimalNoOverlap, \
+                    solveDualEllipsoid, solvePrimalOverlapEX, solvePrimalNoOverlapEX
 
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-games = [(solveBaseline, "Baseline"), (solvePrimalOverlap, "Primal with Overlap"), (solvePrimalNoOverlap, "Primal with no Overlap"), (solveDualEllipsoid, "Dual with Ellipsoid")]
+games = [(solveBaseline, "Baseline"), (solvePrimalOverlapEX, "Primal with Overlap Ex-Ante"), (solvePrimalNoOverlapEX, "Primal with No Overlap Ex-Ane")]
 
 # ==============================================================================
 # LP Definition & Constraints

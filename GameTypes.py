@@ -74,19 +74,15 @@ def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aR
         model2.solve()
         model2.export("baselineModel.lp")
         dStrat[m] = list([float(xVal) for xVal in x])
-        print(f"Strategy for defender {m}: {dStrat[m]}")
         models[m] = model2
     # Attacker best response (for each attacker type)
     aStrat = {}
     protectionOdds = probabilityProtected(dStrat, targetNumWithDummies)
-    print(f"Protection odds: {protectionOdds}")
     for lam in aTypes:
         expectedUtilities = []
         for i in targetRange:
             expectedUtilities.append(((1-protectionOdds[i])*_aRewards[lam][i]) + (protectionOdds[i]*_aPenalties[lam][i]))
-        print(f"ExpectedUtilities for {lam}: {expectedUtilities}")
         aStrat[lam] = argmax(expectedUtilities)
-        print(f"Strat for {lam}: {aStrat[lam]}")
     # Calculate defender expected utility for attacker best response
     for m in defenders:
         for lam in aTypes:
@@ -138,9 +134,6 @@ def solvePrimalOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aType
     # Solve the model
     model.maximize(objectiveFunction)
     model.solve()
-    print(f"Strategy:")
-    for k,v in w.items():
-        print(k, float(v))
     return model.solution.get_objective_value(), model, None
 
 # ------------------------------------------------------------------------------
@@ -364,11 +357,103 @@ def solveDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aType
 # =======
 # ------------------------------------------------------------------------------
 def solvePrimalOverlapEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    return None, None, None
+    """A game where defender assignments are allowed to overlap"""
+    """Contains a dummy target for defenders and attackers"""
+    """In this game the attacker and defender reason ex-ante
+    (they choose to follow signals or not before a signal is sent)."""
+    # Add the extra dummy target
+    _dRewards = copy.deepcopy(dRewards)
+    _dPenalties = copy.deepcopy(dPenalties)
+    _dCosts = copy.deepcopy(dCosts)
+    _aRewards = copy.deepcopy(aRewards)
+    _aPenalties = copy.deepcopy(aPenalties)
+    for m in defenders:
+        for defenderCount in defenders:
+            _dRewards[m].append(0)
+            _dPenalties[m].append(0)
+            _dCosts[m].append(0)
+        for lam in aTypes:
+            _aRewards[lam].append(0)
+            _aPenalties[lam].append(0)
+    targetNumWithDummies = len(_dRewards[0])
+    targetRange = list(range(targetNumWithDummies))
+    attackerActions = targetRange
+    placements = getPlacements(defenders, targetNumWithDummies)
+    omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
+
+    # Build the model
+    model = Model('ExAnteWithOverlap')
+    w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
+    objectiveFunction = sum([q[lam] * sum([w[sd,sa,lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties) for sd in placements for sa in attackerActions]) for lam in aTypes])
+    # Define the constraints
+    c1 = [sum([w[sd,sa,lam] * aUtility(sd,sa,lam,_aPenalties,_aRewards) for sd in placements for sa in attackerActions]) \
+        >= sum([w[sd,sa,lam] * aUtility(sd,tPrime,lam,_aPenalties,_aRewards) for sd in placements for sa in attackerActions])
+        for lam in aTypes for tPrime in targetRange]
+    c1 = [constraint for constraint in c1 if not isinstance(constraint, bool)]
+    c2 = [sum([q[lam] * sum([w[sd,sa,lam] * utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts) for sd in placements for sa in attackerActions]) for lam in aTypes]) \
+        >= sum([q[lam] * sum([w[sd,sa,lam] * utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) for sd in placements for sa in attackerActions]) for lam in aTypes]) \
+        for d in defenders for tPrime in targetRange]
+    c3 = [sum([w[sd,sa,lam] for sd in placements for sa in attackerActions]) == 1
+        for lam in aTypes]
+    # Add the constraints
+    c1 = model.add_constraints(c1)
+    c2 = model.add_constraints(c2)
+    c3 = model.add_constraints(c3)
+    # Solve the model
+    model.maximize(objectiveFunction)
+    model.solve()
+    return model.solution.get_objective_value(), model, None
 
 # ------------------------------------------------------------------------------
 def solvePrimalNoOverlapEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
-    return None, None, None
+    """A game where defender assignments are not allowed to overlap"""
+    """Contains as many dummy targets as defenders, for defenders and attackers"""
+    """In this game the attacker and defender reason ex-ante
+    (they choose to follow signals or not before a signal is sent)."""
+    # Add the extra dummy targets
+    _dRewards = copy.deepcopy(dRewards)
+    _dPenalties = copy.deepcopy(dPenalties)
+    _dCosts = copy.deepcopy(dCosts)
+    _aRewards = copy.deepcopy(aRewards)
+    _aPenalties = copy.deepcopy(aPenalties)
+    for m in defenders:
+        for defenderCount in defenders:
+            _dRewards[m].append(0)
+            _dPenalties[m].append(0)
+            _dCosts[m].append(0)
+        for lam in aTypes:
+            _aRewards[lam].append(0)
+            _aPenalties[lam].append(0)
+    targetNumWithDummies = len(_dRewards[0])
+    targetRange = list(range(targetNumWithDummies))
+    attackerActions = targetRange
+    # Get the suggestions that occur with no overlap
+    overlapPlacements = getPlacements(defenders, targetNumWithDummies)
+    placements = list(filter(lambda x: len(set(x)) == len(x), overlapPlacements))
+    omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
+
+    # Build the model
+    model = Model('ExAnteWithOverlap')
+    w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=1, name="w")
+    objectiveFunction = sum([q[lam] * sum([w[sd,sa,lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties) for sd in placements for sa in attackerActions]) for lam in aTypes])
+    # Define the constraints
+    c1 = [sum([w[sd,sa,lam] * aUtility(sd,sa,lam,_aPenalties,_aRewards) for sd in placements for sa in attackerActions]) \
+        >= sum([w[sd,sa,lam] * aUtility(sd,tPrime,lam,_aPenalties,_aRewards) for sd in placements for sa in attackerActions])
+        for lam in aTypes for tPrime in targetRange]
+    c1 = [constraint for constraint in c1 if not isinstance(constraint, bool)]
+    c2 = [sum([q[lam] * sum([w[sd,sa,lam] * utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts) for sd in placements for sa in attackerActions]) for lam in aTypes]) \
+        >= sum([q[lam] * sum([w[sd,sa,lam] * utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) for sd in placements for sa in attackerActions]) for lam in aTypes]) \
+        for d in defenders for tPrime in targetRange]
+    c3 = [sum([w[sd,sa,lam] for sd in placements for sa in attackerActions]) == 1
+        for lam in aTypes]
+    # Add the constraints
+    c1 = model.add_constraints(c1)
+    c2 = model.add_constraints(c2)
+    c3 = model.add_constraints(c3)
+    # Solve the model
+    model.maximize(objectiveFunction)
+    model.solve()
+    return model.solution.get_objective_value(), model, None
 
 
 def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
