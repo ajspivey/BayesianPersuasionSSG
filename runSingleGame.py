@@ -20,12 +20,14 @@ from util import generateRandomDefenders, generateRandomAttackers, numberToBase,
                 probabilityProtected, createGraph
 
 from gameTypes import solveBaseline, solvePrimalOverlap, solvePrimalNoOverlap, \
-                    solveDualEllipsoid, solvePrimalOverlapEX, solvePrimalNoOverlapEX
+                    solveDualEllipsoid, solvePrimalOverlapEX, solvePrimalNoOverlapEX, \
+                    solveDualEllipsoidEX
 
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
-games = [(solveBaseline, "Baseline"), (solvePrimalOverlapEX, "Primal with Overlap Ex-Ante"), (solvePrimalNoOverlapEX, "Primal with No Overlap Ex-Ane")]
+games = [(solveBaseline, "Baseline"), (solveDualEllipsoid, "Dual with No Overlap"), (solvePrimalOverlapEX, "Primal with Overlap Ex-Ante"), \
+        (solvePrimalNoOverlapEX, "Primal with No Overlap Ex-Ante"), (solveDualEllipsoidEX, "Dual with No Overlap Ex-Ante")]
 
 # ==============================================================================
 # LP Definition & Constraints
