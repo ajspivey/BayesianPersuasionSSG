@@ -277,7 +277,7 @@ def solveDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aType
                         target = int(v.split("_")[1])
                         newPlacement[defender] = target
 
-                # Check the value of this s using (9) -- if negative, add s to
+                # Check the value of this s using (10) -- if negative, add s to
                 # the subset of solutions.
                 value = sum([(aUtility(newPlacement,tPrime,lam,_aPenalties,_aRewards) - aUtility(newPlacement,t0,lam,_aPenalties,_aRewards)) * float(a[t0,tPrime,lam]) for tPrime in targetRange])\
                             + q[lam] * sum([(utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[newPlacement[d],tPrime,d]) for d in defenders for tPrime in targetRange])\
@@ -483,8 +483,8 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
     s = [(sd,sa) for sd in placements for sa in targetRange]
 
     # Generate the keys
-    aKeys = [(tPrime,lam) for tPrime in targetRange for lam in aTypes]
-    bKeys = [(tPrime,d) for tPrime in targetRange for d in defenders]
+    aKeys = [(t,lam) for t in targetRange for lam in aTypes]
+    bKeys = [(t,d) for t in targetRange for d in defenders]
 
     # Get a random subset of the placements
     subsetCount = int(len(placements) * 0.001)
@@ -501,20 +501,21 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
     # objective function:
     objectiveFunction = sum([g[lam] for lam in aTypes])
     # Initial constraints
-    dualConstraints = relaxedModel.add_constraints([ \
+
+    ##
+    ## CHANGED
+    ##
+    dualConstraints = relaxedModel.add_constraints([\
         sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[tPrime,lam] for tPrime in targetRange]) \
-        + sum([q[lam] * (utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts) * b[tPrime,d]) for d in defenders for tPrime in targetRange]) \
+        + sum([q[lam] * (utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[tPrime,d] for d in defenders for tPrime in targetRange]) \
         + g[lam] \
-        >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties) \
-        for sd,sa in subsetS for lam in aTypes])
+        >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)
+    for sd,sa in subsetS for lam in aTypes])
 
     # Solve the dual using column generation
     for _ in range(maxIterations):
-        # print(f"ITERATION: {_}")
-
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
-        # print(f"Utility on iteration {_} = {relaxedModel.solution.get_objective_value()}")
 
         # For every lam,t0, split (9) into two subproblems and solve each.
         violatedConstraints = False
@@ -530,15 +531,21 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
                         if t == t0:
                             weightValue = 10000000
                         else:
-                            weightValue = (_aPenalties[lam][t] - _aRewards[lam][t0]) * float(a[t,lam]) \
-                                        + q[lam] * sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[tPrime,d]) for tPrime in targetRange if tPrime != t0]) \
-                                        + q[lam] * sum([(_dCosts[d][t0] + _dRewards[d][t0] - _dCosts[d][t] - _dPenalties[d][t0]) * float(b[t0,d]) for d in defenders])\
-                                        - q[lam] * _dCosts[d][t]
+                            ##
+                            ## CHANGED
+                            ##
+                            weightValue = ((_aPenalties[lam][t] - _aRewards[lam][t0]) * float(a[t,lam])) \
+                                        + (q[lam] * sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[tPrime,d]) for tPrime in targetRange if tPrime != t0])) \
+                                        + (q[lam] * sum([(_dCosts[d][t0] + _dRewards[d][t0] - _dCosts[d][t] - _dPenalties[d][t0]) * float(b[t0,d]) for d in defenders])) \
+                                        - (q[lam] * _dCosts[d][t])
                         edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
                 # Graph weights with added defenders
                 for d in range(len(defenders), targetNumWithDummies):
                     edges[f"ed_{d}"] = {}
                     for t in targetRange:
+                        ##
+                        ## CHANGED
+                        ##
                         weightValue = (_aRewards[lam][t] - _aRewards[lam][t0]) * float(a[t,lam])
                         edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
 
@@ -552,12 +559,14 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
                         target = int(v.split("_")[1])
                         newPlacement[defender] = target
 
-                # Check the value of this s using (9) -- if negative, add s to
+                # Check the value of this s using (10) -- if negative, add s to
                 # the subset of solutions.
+                ##
+                ## CHANGED
+                ##
                 value = sum([(aUtility(newPlacement,tPrime,lam,_aPenalties,_aRewards) - aUtility(newPlacement,t0,lam,_aPenalties,_aRewards)) * float(a[tPrime,lam]) for tPrime in targetRange]) \
                     + sum([q[lam] * (utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[tPrime,d]) for d in defenders for tPrime in targetRange]) \
-                    - q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties) \
-                    + float(g[lam])
+                    - (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties)) + float(g[lam])
 
                 if value < EPSILON:
                     signal = (newPlacement,t0)
@@ -576,15 +585,21 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
                             edges[f"d_{d}"] = {}
                             for t in targetRange:
                                 if t != t0:
+                                    ##
+                                    ## CHANGE
+                                    ##
                                     weightValue = (_aPenalties[lam][t] - _aPenalties[lam][t0]) * float(a[t,lam]) \
-                                                + q[lam] * sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[tPrime,d]) for tPrime in targetRange]) \
-                                                - q[lam] * _dCosts[d][t]
+                                                + q[lam] * (sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[tPrime,d]) for tPrime in targetRange])) \
+                                                - (q[lam] * _dCosts[d][t])
                                     edges[f"d_{d}"][f"t_{t}"] = {"weight": weightValue}
                     # Graph weights with added defenders (minus t0)
                     for d in range(len(defenders), targetNumWithDummies):
                         edges[f"ed_{d}"] = {}
                         for t in targetRange:
                             if t != t0:
+                                ##
+                                ## CHANGE
+                                ##
                                 weightValue = (_aRewards[lam][t] - _aPenalties[lam][t0]) * float(a[t,lam])
                                 edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
 
@@ -601,10 +616,12 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
 
                     # Check the value of this s using (9) -- if negative, add s to
                     # the subset of solutions.
+                    ##
+                    ## CHANGED
+                    ##
                     value = sum([(aUtility(newPlacement,tPrime,lam,_aPenalties,_aRewards) - aUtility(newPlacement,t0,lam,_aPenalties,_aRewards)) * float(a[tPrime,lam]) for tPrime in targetRange]) \
                         + sum([q[lam] * (utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[tPrime,d]) for d in defenders for tPrime in targetRange]) \
-                        - q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties) \
-                        + float(g[lam])
+                        - (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties)) + float(g[lam])
 
                     if value < EPSILON:
                         signal = (newPlacement,t0)
@@ -615,16 +632,17 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
         # Now that we have checked all the violated constraints, either return
         # the solution ( get the dual values) or recompute the optimal value of
         # the dual with additional constraints
-        newConstraints = relaxedModel.add_constraints([ \
+        ##
+        ## CHANGED
+        ##
+        newConstraints = relaxedModel.add_constraints([\
             sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[tPrime,lam] for tPrime in targetRange]) \
-            + sum([q[lam] * (utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts) * b[tPrime,d]) for d in defenders for tPrime in targetRange]) \
+            + sum([q[lam] * (utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[tPrime,d] for d in defenders for tPrime in targetRange]) \
             + g[lam] \
-            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties) \
-            for sd,sa in signalsToBeAdded for lam in aTypes])
+            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)
+        for sd,sa in signalsToBeAdded for lam in aTypes])
         for signal in signalsToBeAdded:
             subsetS.append(signal)
         if not violatedConstraints:
-            # print(relaxedModel.dual_values(relaxedModel.iter_constraints()))
             return relaxedModel.solution.get_objective_value(), relaxedModel, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
-    # print(relaxedModel.dual_values(relaxedModel.iter_constraints()))
     return relaxedModel.solution.get_objective_value(), relaxedModel, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
