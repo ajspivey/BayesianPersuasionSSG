@@ -176,5 +176,5 @@ def createGraph(title, xLabel, yLabel, gameTypes, gameData, xStart=1):
     plt.xlabel(f"{xLabel}")
     plt.ylabel(f"{yLabel}")
     plt.legend()
-    plt.savefig(f"./{title}.png")
+    plt.savefig(f"./Comparisons/{title}.png")
     return g
