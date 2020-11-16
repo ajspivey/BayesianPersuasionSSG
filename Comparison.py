@@ -18,7 +18,8 @@ from util import generateRandomDefenders, generateRandomAttackers, numberToBase,
                 getPlacements, getOmegaKeys, defenderSocialUtility, utilityM, \
                 aUtility, getLambdaPlacements, utilityDI, utilityLamI, \
                 probabilityProtected, createGraph
-from gameTypes import solveBaseline, solvePrimalOverlap, solvePrimalNoOverlap, solveDualEllipsoid
+from gameTypes import solveBaseline, solvePrimalOverlap, solvePrimalNoOverlap, solveDualEllipsoid, \
+                    solvePrimalOverlapEX, solvePrimalNoOverlapEX, solveDualEllipsoidEX
 
 # ==============================================================================
 # FUNCTIONS
@@ -116,8 +117,6 @@ def generateGraph(gameTypeList, iterationFunction, iterableLabel):
                 overBudgets[gameIndex] = True
             gameUtilities[gameTypeList[gameIndex][1]].append(utilities[gameIndex])
             gameTimes[gameTypeList[gameIndex][1]].append(times[gameIndex])
-    print(gameUtilities)
-    print(gameTimes)
     uGraph = createGraph(f"Average Utilities ({iterableLabel})", f"Number of {iterableLabel}", "Utility", gameTypeList, gameUtilities, xStart=minIterable)
     tGraph = createGraph(f"Average Runtimes ({iterableLabel})", f"Number of {iterableLabel}", "Runtime", gameTypeList, gameTimes, xStart=minIterable)
     plt.show()
@@ -129,13 +128,13 @@ def generateGraph(gameTypeList, iterationFunction, iterableLabel):
 timeBudget = 100 # 30 minutes
 utilities = []
 minIterable = 2
-maxIterable = 6
+maxIterable = 4
 
 # ==============================================================================
 # LP Definition & Constraints
 # ==============================================================================
-gameTypeList = [(solveBaseline,"Baseline", "y"), (solvePrimalOverlap,"Allow Overlap", "r"), (solvePrimalNoOverlap,"No Overlap", "g"), (solveDualEllipsoid,"Dual w/ Ellipsoid", "b")]
+gameTypeList = [(solveBaseline,"Baseline", "k"), (solvePrimalOverlap,"Allow Overlap", "r"), (solvePrimalNoOverlap,"No Overlap", "g"), (solveDualEllipsoid,"Dual w/ Ellipsoid", "b"), (solvePrimalOverlapEX,"Allow Overlap Ex-Ante", "c"), (solvePrimalNoOverlapEX,"No Overlap Ex-Ante", "m"), (solveDualEllipsoidEX,"Dual w/ Ellipsoid Ex-Ante", "y")]
 # Iterate over the targets
-generateGraph(gameTypeList, iterateTargets, "Targets")
-# generateGraph(gameTypeList, iterateDefenders, "Defenders")
-# generateGraph(gameTypeList, iterateAttackers, "Attackers")
+#generateGraph(gameTypeList, iterateTargets, "Targets")
+generateGraph(gameTypeList, iterateDefenders, "Defenders")
+#generateGraph(gameTypeList, iterateAttackers, "Attackers")
