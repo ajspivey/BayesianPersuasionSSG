@@ -646,3 +646,70 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
         if not violatedConstraints:
             return relaxedModel.solution.get_objective_value(), relaxedModel, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
     return relaxedModel.solution.get_objective_value(), relaxedModel, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
+
+# ------------------------------------------------------------------------------
+def solveCompactEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+    """A compact representation of the EX gamse"""
+    """In this game the attacker and defender reason ex-ante
+    (they choose to follow signals or not before a signal is sent)."""
+    # Add the extra dummy targets
+    _dRewards = copy.deepcopy(dRewards)
+    _dPenalties = copy.deepcopy(dPenalties)
+    _dCosts = copy.deepcopy(dCosts)
+    _aRewards = copy.deepcopy(aRewards)
+    _aPenalties = copy.deepcopy(aPenalties)
+    for m in defenders:
+        for defenderCount in defenders:
+            _dRewards[m].append(0)
+            _dPenalties[m].append(0)
+            _dCosts[m].append(0)
+        for lam in aTypes:
+            _aRewards[lam].append(0)
+            _aPenalties[lam].append(0)
+    targetNumWithDummies = len(_dRewards[0])
+    targetRange = list(range(targetNumWithDummies))
+    attackerActions = targetRange
+    # Get the suggestions that occur with no overlap
+    omegaKeys = [(t,d,tPrime,lam) for t in targetRange for d in defenders for tPrime in targetRange for lam in aTypes]
+    omegaKeys2 = [(t,lam) for t in targetRange for lam in aTypes]
+
+    # Build the model
+    model = Model('ExAnteWithOverlap')
+    w = model.continuous_var_dict(keys=omegaKeys, lb=0, ub=10000, name="w")
+    w2 = model.continuous_var_dict(keys=omegaKeys2, lb=0, ub=10000, name="w2")
+    objectiveFunction = sum([q[lam] * sum([w[t,d,t,lam] * _dRewards[d][t] for t in targetRange for d in defenders]) for lam in aTypes]) \
+                        + sum([sum([(w2[t,lam] - sum([w[t,d,t,lam] for d in defenders])) * sum([_dPenalties[d][t] for d in defenders]) for t in targetRange]) for lam in aTypes]) \
+                        + sum([q[lam] * sum([sum([w[t,d,tPrime,lam] for t in targetRange]) * _dCosts[d][tPrime] for tPrime in targetRange for d in defenders]) for lam in aTypes])
+
+    # Define the constraints
+    # Attacker
+    attackerConstraints = [sum([w[t,d,t,lam] * _aPenalties[lam][t] for t in targetRange for d in defenders]) \
+                        + sum([(w2[t,lam] - sum([w[t,d,t,lam] for d in defenders])) * _aRewards[lam][t] for t in targetRange]) \
+                        >= sum([w[t,d,tPrime,lam] * _aPenalties[lam][tPrime] for t in targetRange for d in defenders]) \
+                        + sum([(w2[t,lam] - sum([w[t,d,tPrime,lam] for d in defenders])) * _aRewards[lam][tPrime] for t in targetRange]) \
+                        for lam in aTypes for tPrime in targetRange]
+    # Defender
+    defenderConstraints = [sum([q[lam] * sum([w[t,d,t,lam] * _dRewards[d][t] for t in targetRange]) for lam in aTypes]) \
+                        + sum([q[lam] * sum([(w2[t,lam] - sum([w[t,d,t,lam] for d in defenders])) * _dPenalties[d][t] for t in targetRange]) for lam in aTypes]) \
+                        + sum([q[lam] * sum([sum([w[t,d,tPrimePrime,lam] for t in targetRange]) * _dCosts[d][tPrimePrime] for tPrimePrime in targetRange]) for lam in aTypes]) \
+                        >= sum([q[lam] * w2[tPrime,lam] * _dRewards[d][tPrime] for lam in aTypes]) \
+                        + sum([q[lam] * sum([sum([w[t,dPrime,t,lam] for dPrime in defenders if dPrime != d]) * _dRewards[d][t] for t in targetRange if t != tPrime]) for lam in aTypes]) \
+                        + sum([q[lam] * sum([w[t,d,t,lam] * _dPenalties[d][t] for t in targetRange if t != tPrime]) for lam in aTypes]) \
+                        + sum([q[lam] * sum([(w2[t,lam] - sum([w[t,dPrime,t,lam] for dPrime in defenders])) * _dPenalties[d][t] for t in targetRange if t != tPrime]) for lam in aTypes]) \
+                        + _dCosts[d][tPrime] \
+                        for d in defenders for tPrime in targetRange]
+    # Proposition constraints
+    p11Constraints = [sum([w2[t,lam] for t in targetRange]) == 1 for lam in aTypes]
+    p12Constraints = [sum([w[t,d,tPrime,lam] for tPrime in targetRange]) == w2[t,lam] for lam in aTypes for d in defenders for t in targetRange]
+    p13Constraints = [sum([w[t,d,tPrime,lam] for d in defenders]) <= w2[t,lam] for lam in aTypes for tPrime in targetRange for t in targetRange]
+    # Add the constraints
+    attackerConstraints = model.add_constraints(attackerConstraints)
+    defenderConstraints = model.add_constraints(defenderConstraints)
+    p11Constraints = model.add_constraints(p11Constraints)
+    p12Constraints = model.add_constraints(p12Constraints)
+    p13Constraints = model.add_constraints(p13Constraints)
+    # Solve the model
+    model.maximize(objectiveFunction)
+    model.solve()
+    print(model.get_solve_status())
+    return model.solution.get_objective_value(), model, None
