@@ -23,6 +23,8 @@ from gameTypes import solveBaseline, solvePrimalOverlap, solvePrimalNoOverlap, \
                     solveDualEllipsoid, solvePrimalOverlapEX, solvePrimalNoOverlapEX, \
                     solveDualEllipsoidEX, solveCompactEX
 
+random.seed(1)
+
 # ==============================================================================
 # GAME SETTINGS
 # ==============================================================================
