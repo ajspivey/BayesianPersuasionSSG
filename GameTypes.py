@@ -678,7 +678,7 @@ def solveCompactEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, a
     w = model.continuous_var_dict(keys=omegaKeys, lb=0, name="w")
     w2 = model.continuous_var_dict(keys=omegaKeys2, lb=0, name="w2")
     objectiveFunction = sum([q[lam] * sum([w[t,d,t,lam] * _dRewards[d][t] for t in targetRange for d in defenders]) for lam in aTypes]) \
-                        + sum([sum([(w2[t,lam] - sum([w[t,d,t,lam] for d in defenders])) * sum([_dPenalties[d][t] for d in defenders]) for t in targetRange]) for lam in aTypes]) \
+                        + sum([q[lam] * sum([(w2[t,lam] - sum([w[t,d,t,lam] for d in defenders])) * sum([_dPenalties[d][t] for d in defenders]) for t in targetRange]) for lam in aTypes]) \
                         + sum([q[lam] * sum([sum([w[t,d,tPrime,lam] for t in targetRange]) * _dCosts[d][tPrime] for tPrime in targetRange for d in defenders]) for lam in aTypes])
 
     # Define the constraints
