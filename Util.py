@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import random
 import copy
 
-from constants import DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M
 # ==============================================================================
 # FUNCTIONS
 # ==============================================================================

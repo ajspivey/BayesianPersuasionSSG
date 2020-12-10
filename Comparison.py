@@ -13,13 +13,14 @@ import random
 import copy
 
 # Internal Imports
-from constants import DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M,GAMEUTILITY,GAMEMODEL,GAMEEXTRAS
+from constants import DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,GAMEUTILITY,GAMEMODEL,GAMEEXTRAS
 from util import generateRandomDefenders, generateRandomAttackers, numberToBase, \
                 getPlacements, getOmegaKeys, defenderSocialUtility, utilityM, \
                 aUtility, getLambdaPlacements, utilityDI, utilityLamI, \
                 probabilityProtected, createGraph
 from gameTypes import solveBaseline, solvePrimalOverlap, solvePrimalNoOverlap, solveDualEllipsoid, \
-                    solvePrimalOverlapEX, solvePrimalNoOverlapEX, solveDualEllipsoidEX
+                    solvePrimalOverlapEX, solvePrimalNoOverlapEX, solveDualEllipsoidEX, \
+                    solveCompactEX
 
 # ==============================================================================
 # FUNCTIONS
@@ -131,10 +132,11 @@ minIterable = 2
 maxIterable = 4
 
 # ==============================================================================
-# LP Definition & Constraints
+# Game Types and Function Calls (main)
 # ==============================================================================
 gameTypeList = [(solveBaseline,"Baseline", "k"), (solvePrimalOverlap,"Allow Overlap", "r"), (solvePrimalNoOverlap,"No Overlap", "g"), (solveDualEllipsoid,"Dual w/ Ellipsoid", "b"), (solvePrimalOverlapEX,"Allow Overlap Ex-Ante", "c"), (solvePrimalNoOverlapEX,"No Overlap Ex-Ante", "m"), (solveDualEllipsoidEX,"Dual w/ Ellipsoid Ex-Ante", "y")]
 # Iterate over the targets
 #generateGraph(gameTypeList, iterateTargets, "Targets")
-generateGraph(gameTypeList, iterateDefenders, "Defenders")
+#generateGraph(gameTypeList, iterateDefenders, "Defenders")
 #generateGraph(gameTypeList, iterateAttackers, "Attackers")
+iterateAll(gameTypeList)

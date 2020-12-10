@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import random
 import copy
 
-from constants import DEFENDERNUM,ATTACKERNUM,TARGETNUM,AVGCOUNT,M,GAMEUTILITY,GAMEMODEL,GAMEEXTRAS,EPSILON
+from constants import EPSILON, M
 from util import generateRandomDefenders, generateRandomAttackers, numberToBase, \
                 getPlacements, getOmegaKeys, defenderSocialUtility, utilityM, \
                 aUtility, getLambdaPlacements, utilityDI, utilityLamI, \
@@ -54,7 +54,9 @@ def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aR
     omegaKeys = getOmegaKeys(aTypes, placements, attackerActions)
 
     # Construct the model for each defender
-    baselineUtility = 0
+    utilityPerDefender = 0
+    utilityPerAttacker = 0
+    attackerUtility = []
     dStrat = {}
     models2 = {}
     for m in defenders:
@@ -72,7 +74,6 @@ def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aR
         # Solve the model for each defender
         model2.maximize(objectiveFunction)
         model2.solve()
-        model2.export("baselineModel.lp")
         dStrat[m] = list([float(xVal) for xVal in x])
         models[m] = model2
     # Attacker best response (for each attacker type)
@@ -83,19 +84,25 @@ def solveBaseline(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aR
         for i in targetRange:
             expectedUtilities.append(((1-protectionOdds[i])*_aRewards[lam][i]) + (protectionOdds[i]*_aPenalties[lam][i]))
         aStrat[lam] = argmax(expectedUtilities)
+        attackerUtility.append(expectedUtilities[aStrat[lam]])
+    utilityPerAttacker = sum(attackerUtility)/len(aTypes)
+
+
     # Calculate defender expected utility for attacker best response
     for m in defenders:
         for lam in aTypes:
             attackedTarget = aStrat[lam]                                                                                        # The target attacked by this attacker
             coveredUtility = protectionOdds[attackedTarget] * (_dRewards[m][attackedTarget])                                    # The expected utility we catch this attacker
             uncoveredUtility = (1-protectionOdds[attackedTarget]) * (_dPenalties[m][attackedTarget])                            # The expected utility we miss this attacker
-            baselineUtility +=  q[lam] * (coveredUtility + uncoveredUtility)
+            utilityPerDefender +=  q[lam] * (coveredUtility + uncoveredUtility)
         expectedCost = sum([dStrat[m][target] * _dCosts[m][target] for target in targetRange])
-        baselineUtility += expectedCost
-    return baselineUtility, models, None
+        utilityPerDefender += expectedCost
+    utilityPerDefender /= len(defenders)
+
+    return utilityPerDefender, utilityPerAttacker, None
 
 # ------------------------------------------------------------------------------
-def solvePrimalOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+def solvePostOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
     """A game where defender assignments are allowed to overlap"""
     """Contains a dummy target for defenders and attackers"""
     # Add the extra dummy target
@@ -134,10 +141,20 @@ def solvePrimalOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aType
     # Solve the model
     model.maximize(objectiveFunction)
     model.solve()
-    return model.solution.get_objective_value(), model, None
+    # Now that w contains all the outcomes and their probabilities, sum the attacker utilities up.
+    utilityPerAttacker = 0
+    for k,v in w.items():
+        prob = float(v)
+        s,a,lam = k
+        utilityPerAttacker += aUtility(s,a,lam,_aPenalties,_aRewards) * prob
+    utilityPerAttacker /= len(aTypes)
+    utilityPerDefender = model.solution.get_objective_value()
+    utilityPerDefender /= len(defenders)
+
+    return utilityPerDefender, utilityPerAttacker, None
 
 # ------------------------------------------------------------------------------
-def solvePrimalNoOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+def solvePostNoOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
     """A game where defender assignments are not allowed to overlap"""
     """Contains as many dummy targets as defenders, for defenders and attackers"""
     # Add the extra dummy targets
@@ -178,10 +195,22 @@ def solvePrimalNoOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
     # Solve the model
     model.maximize(objectiveFunction)
     model.solve()
-    return model.solution.get_objective_value(), model, None
+    # Now that w contains all the outcomes and their probabilities, sum the attacker utilities up.
+    utilityPerAttacker = 0
+    for k,v in w.items():
+        prob = float(v)
+        s,a,lam = k
+        utilityPerAttacker += aUtility(s,a,lam,_aPenalties,_aRewards) * prob
+    utilityPerAttacker /= len(aTypes)
+    utilityPerDefender = model.solution.get_objective_value()
+    utilityPerDefender /= len(defenders)
+    return utilityPerDefender, utilityPerAttacker, None
 
 
-def solveDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
+def solvePostDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=5000):
+    #
+    # NEEDS ATTACKER AVG PER ATTACKER
+    #
     """A game where defender assignments are not allowed to overlap"""
     """Contains as many dummy targets as defenders, for defenders and attackers"""
     """This problem is the dual of the primal above, and is solved using the ellipsoid method."""
@@ -201,6 +230,9 @@ def solveDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aType
             _aPenalties[lam].append(0)
     targetNumWithDummies = len(_dRewards[0])
     targetRange = list(range(targetNumWithDummies))
+
+    # This is so we can reconstruct s later
+    constraintMap = {}
 
     # Get the suggestions that occur with no overlap
     overlapPlacements = getPlacements(defenders, targetNumWithDummies)
@@ -226,20 +258,25 @@ def solveDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aType
     # objective function:
     objectiveFunction = sum([g[lam] for lam in aTypes])
     # Initial constraints
-    dualConstraints = relaxedModel.add_constraints([                            \
-        sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[sa,tPrime,lam] for tPrime in targetRange]) + \
-        q[lam] * sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,d]  for d in defenders for tPrime in targetRange]) + \
-        g[lam] \
-        >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
-        for sd,sa in subsetS for lam in aTypes])
+    initialConstraints = []
+    for sd,sa in subsetS:
+        for lam in aTypes:
+            constraint = sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[sa,tPrime,lam] for tPrime in targetRange]) + \
+                q[lam] * sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,d]  for d in defenders for tPrime in targetRange]) + \
+                g[lam] \
+                >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)
+            initialConstraints.append(constraint)
+            constraintMap[constraint] = (sd,sa,lam)
+
+    dualConstraints = relaxedModel.add_constraints(initialConstraints)
 
     # Solve the dual using column generation
     for _ in range(maxIterations):
-        # print(f"ITERATION: {_}")
+        #print(f"ITERATION: {_}", flush=True)
 
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
-        # print(f"Utility on iteration {_} = {relaxedModel.solution.get_objective_value()}")
+        #print(f"Utility on iteration {_} = {relaxedModel.solution.get_objective_value()}", flush=True)
 
         # For every lam,t0, split (9) into two subproblems and solve each.
         violatedConstraints = False
@@ -338,25 +375,36 @@ def solveDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aType
         # Now that we have checked all the violated constraints, either return
         # the solution ( get the dual values) or recompute the optimal value of
         # the dual with additional constraints
-        newConstraints = relaxedModel.add_constraints([                            \
-            sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[sa,tPrime,lam] for tPrime in targetRange]) + \
-            q[lam] * sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,d]  for d in defenders for tPrime in targetRange]) + \
-            g[lam] \
-            >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)  \
-            for sd,sa in signalsToBeAdded for lam in aTypes])
+        newConstraints = []
+        for sd,sa in signalsToBeAdded:
+            for lam in aTypes:
+                newConstraint = sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[sa,tPrime,lam] for tPrime in targetRange]) + \
+                    q[lam] * sum([(utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[sd[d],tPrime,d]  for d in defenders for tPrime in targetRange]) + \
+                    g[lam] \
+                    >= q[lam] * defenderSocialUtility(sd,sa,defenders,_dRewards,_dCosts,_dPenalties)
+                newConstraints.append(newConstraint)
+                constraintMap[newConstraint] = (sd,sa,lam)
+        relaxedModel.add_constraints(newConstraints)
         for signal in signalsToBeAdded:
             subsetS.append(signal)
         if not violatedConstraints:
-            # print(relaxedModel.dual_values(relaxedModel.iter_constraints()))
-            return relaxedModel.solution.get_objective_value(), relaxedModel, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
+            break
     # print(relaxedModel.dual_values(relaxedModel.iter_constraints()))
-    return relaxedModel.solution.get_objective_value(), relaxedModel, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
+    utilityPerDefender = relaxedModel.solution.get_objective_value() / len(defenders)
+    utilityPerAttacker = 0
+    constraints = relaxedModel.iter_constraints()
+    for constraint in constraints:
+        sd, sa, lam = constraintMap[constraint]
+        prob = relaxedModel.dual_values([constraint])[0]
+        utilityPerAttacker += aUtility(sd,sa,lam,_aPenalties,_aRewards) * prob
+    utilityPerAttacker /= len(aTypes)
+    return utilityPerDefender, utilityPerAttacker, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
 
 # =======
 # EX ANTE
 # =======
 # ------------------------------------------------------------------------------
-def solvePrimalOverlapEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+def solveExOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
     """A game where defender assignments are allowed to overlap"""
     """Contains a dummy target for defenders and attackers"""
     """In this game the attacker and defender reason ex-ante
@@ -402,10 +450,19 @@ def solvePrimalOverlapEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
     # Solve the model
     model.maximize(objectiveFunction)
     model.solve()
-    return model.solution.get_objective_value(), model, None
+    # Now that w contains all the outcomes and their probabilities, sum the attacker utilities up.
+    utilityPerAttacker = 0
+    for k,v in w.items():
+        prob = float(v)
+        s,a,lam = k
+        utilityPerAttacker += aUtility(s,a,lam,_aPenalties,_aRewards) * prob
+    utilityPerAttacker /= len(aTypes)
+    utilityPerDefender = model.solution.get_objective_value()
+    utilityPerDefender /= len(defenders)
+    return utilityPerDefender, utilityPerAttacker, None
 
 # ------------------------------------------------------------------------------
-def solvePrimalNoOverlapEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+def solveExNoOverlap(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
     """A game where defender assignments are not allowed to overlap"""
     """Contains as many dummy targets as defenders, for defenders and attackers"""
     """In this game the attacker and defender reason ex-ante
@@ -453,10 +510,22 @@ def solvePrimalNoOverlapEX(targetNum, defenders, dRewards, dPenalties, dCosts, a
     # Solve the model
     model.maximize(objectiveFunction)
     model.solve()
-    return model.solution.get_objective_value(), model, None
+    # Now that w contains all the outcomes and their probabilities, sum the attacker utilities up.
+    utilityPerAttacker = 0
+    for k,v in w.items():
+        prob = float(v)
+        s,a,lam = k
+        utilityPerAttacker += aUtility(s,a,lam,_aPenalties,_aRewards) * prob
+    utilityPerAttacker /= len(aTypes)
+    utilityPerDefender = model.solution.get_objective_value()
+    utilityPerDefender /= len(defenders)
+    return utilityPerDefender, utilityPerAttacker, None
 
 
-def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=500):
+def solveExDualEllipsoid(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q, maxIterations=5000):
+    #
+    # NEEDS ATTACKER AVG PER ATTACKER
+    #
     """A game where defender assignments are not allowed to overlap"""
     """Contains as many dummy targets as defenders, for defenders and attackers"""
     """This problem is the dual of the primal above, and is solved using the ellipsoid method."""
@@ -501,10 +570,6 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
     # objective function:
     objectiveFunction = sum([g[lam] for lam in aTypes])
     # Initial constraints
-
-    ##
-    ## CHANGED
-    ##
     dualConstraints = relaxedModel.add_constraints([\
         sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[tPrime,lam] for tPrime in targetRange]) \
         + sum([q[lam] * (utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[tPrime,d] for d in defenders for tPrime in targetRange]) \
@@ -514,8 +579,11 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
 
     # Solve the dual using column generation
     for _ in range(maxIterations):
+        #print(f"ITERATION: {_}", flush=True)
+
         relaxedModel.minimize(objectiveFunction)
         relaxedModel.solve() # Alpha and Beta have values for each instance of target and attacker
+        #print(f"Utility on iteration {_} = {relaxedModel.solution.get_objective_value()}", flush=True)
 
         # For every lam,t0, split (9) into two subproblems and solve each.
         violatedConstraints = False
@@ -531,9 +599,6 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
                         if t == t0:
                             weightValue = 10000000
                         else:
-                            ##
-                            ## CHANGED
-                            ##
                             weightValue = ((_aPenalties[lam][t] - _aRewards[lam][t0]) * float(a[t,lam])) \
                                         + (q[lam] * sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[tPrime,d]) for tPrime in targetRange if tPrime != t0])) \
                                         + (q[lam] * sum([(_dCosts[d][t0] + _dRewards[d][t0] - _dCosts[d][t] - _dPenalties[d][t0]) * float(b[t0,d]) for d in defenders])) \
@@ -543,9 +608,6 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
                 for d in range(len(defenders), targetNumWithDummies):
                     edges[f"ed_{d}"] = {}
                     for t in targetRange:
-                        ##
-                        ## CHANGED
-                        ##
                         weightValue = (_aRewards[lam][t] - _aRewards[lam][t0]) * float(a[t,lam])
                         edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
 
@@ -561,9 +623,6 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
 
                 # Check the value of this s using (10) -- if negative, add s to
                 # the subset of solutions.
-                ##
-                ## CHANGED
-                ##
                 value = sum([(aUtility(newPlacement,tPrime,lam,_aPenalties,_aRewards) - aUtility(newPlacement,t0,lam,_aPenalties,_aRewards)) * float(a[tPrime,lam]) for tPrime in targetRange]) \
                     + sum([q[lam] * (utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[tPrime,d]) for d in defenders for tPrime in targetRange]) \
                     - (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties)) + float(g[lam])
@@ -585,9 +644,6 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
                             edges[f"d_{d}"] = {}
                             for t in targetRange:
                                 if t != t0:
-                                    ##
-                                    ## CHANGE
-                                    ##
                                     weightValue = (_aPenalties[lam][t] - _aPenalties[lam][t0]) * float(a[t,lam]) \
                                                 + q[lam] * (sum([(_dCosts[d][tPrime] - _dCosts[d][t]) * float(b[tPrime,d]) for tPrime in targetRange])) \
                                                 - (q[lam] * _dCosts[d][t])
@@ -597,9 +653,6 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
                         edges[f"ed_{d}"] = {}
                         for t in targetRange:
                             if t != t0:
-                                ##
-                                ## CHANGE
-                                ##
                                 weightValue = (_aRewards[lam][t] - _aPenalties[lam][t0]) * float(a[t,lam])
                                 edges[f"ed_{d}"][f"t_{t}"] = {"weight": weightValue}
 
@@ -616,9 +669,6 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
 
                     # Check the value of this s using (9) -- if negative, add s to
                     # the subset of solutions.
-                    ##
-                    ## CHANGED
-                    ##
                     value = sum([(aUtility(newPlacement,tPrime,lam,_aPenalties,_aRewards) - aUtility(newPlacement,t0,lam,_aPenalties,_aRewards)) * float(a[tPrime,lam]) for tPrime in targetRange]) \
                         + sum([q[lam] * (utilityM(tPrime,newPlacement,t0,d,_dRewards,_dPenalties,_dCosts) - utilityM(newPlacement[d],newPlacement,t0,d,_dRewards,_dPenalties,_dCosts)) * float(b[tPrime,d]) for d in defenders for tPrime in targetRange]) \
                         - (q[lam] * defenderSocialUtility(newPlacement,t0,defenders,_dRewards,_dCosts,_dPenalties)) + float(g[lam])
@@ -632,9 +682,6 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
         # Now that we have checked all the violated constraints, either return
         # the solution ( get the dual values) or recompute the optimal value of
         # the dual with additional constraints
-        ##
-        ## CHANGED
-        ##
         newConstraints = relaxedModel.add_constraints([\
             sum([(aUtility(sd,tPrime,lam,_aPenalties,_aRewards) - aUtility(sd,sa,lam,_aPenalties,_aRewards)) * a[tPrime,lam] for tPrime in targetRange]) \
             + sum([q[lam] * (utilityM(tPrime,sd,sa,d,_dRewards,_dPenalties,_dCosts) - utilityM(sd[d],sd,sa,d,_dRewards,_dPenalties,_dCosts)) * b[tPrime,d] for d in defenders for tPrime in targetRange]) \
@@ -648,7 +695,10 @@ def solveDualEllipsoidEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTy
     return relaxedModel.solution.get_objective_value(), relaxedModel, None#relaxedModel.dual_values(relaxedModel.iter_constraints())
 
 # ------------------------------------------------------------------------------
-def solveCompactEX(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+def solveExCompact(targetNum, defenders, dRewards, dPenalties, dCosts, aTypes, aRewards, aPenalties, q):
+    #
+    # NEEDS ATTACKER AVG PER ATTACKER
+    #
     """A compact representation of the EX gamse"""
     """In this game the attacker and defender reason ex-ante
     (they choose to follow signals or not before a signal is sent)."""
